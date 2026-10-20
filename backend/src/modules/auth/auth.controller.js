@@ -43,18 +43,16 @@ export async function login(req, res) {
       account = dbStore.findUserByEmail(cleanEmail);
     }
 
-    // Dukung alias singkat seperti 'admin' atau 'user'
+    // Dukung alias singkat seperti 'admin'
     if (!account) {
       if (cleanEmail === 'admin' || cleanEmail.startsWith('admin@') || cleanEmail.includes('admin')) {
         account = dbStore.findUserByEmail('admin@polusee.id');
-      } else if (cleanEmail === 'user' || cleanEmail.startsWith('user@') || cleanEmail.includes('user')) {
-        account = dbStore.findUserByEmail('user@polusee.id');
       }
     }
 
     if (!account) {
       return res.status(401).json({
-        message: 'Akun tidak ditemukan. Gunakan email default: user@polusee.id (User) atau admin@polusee.id (Admin).',
+        message: 'Akun tidak ditemukan. Silakan lakukan registrasi akun terlebih dahulu atau masuk sebagai Admin.',
       });
     }
 
@@ -160,6 +158,7 @@ export async function register(req, res) {
     let newAccount = {
       id_akun: newId,
       nama_lengkap: nama.trim(),
+      username: `@${cleanEmail.split('@')[0]}`,
       email: cleanEmail,
       password_hash: passwordHash,
       role: 'USER',

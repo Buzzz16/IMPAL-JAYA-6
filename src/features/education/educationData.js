@@ -103,29 +103,4 @@ export const initialLessons = baseLessons.map((item, index) => ({
 /**
  * Data awal Ulasan Konten Edukasi (Tabel `ulasan_edukasi` pada SKPL UC-06 & UC-07)
  */
-export const initialLessonReviews = {
-  'lesson-0': [
-    {
-      id_ulasan: 'rev-1',
-      id_konten: 'lesson-0',
-      author: 'Aditya Nugraha',
-      handle: '@adityanugraha',
-      isOwner: true,
-      rating: 5,
-      isi_ulasan: 'Penjelasan rentang angka AQI sangat mudah dipahami untuk memantau udara harian di Samarinda.',
-      is_edited: false,
-      updated_at: 'Hari ini',
-    },
-    {
-      id_ulasan: 'rev-2',
-      id_konten: 'lesson-0',
-      author: 'Rina Kusuma',
-      handle: '@rinakusuma',
-      isOwner: false,
-      rating: 5,
-      isi_ulasan: 'Sangat membantu sebagai panduan sebelum mengajak anak beraktivitas di luar.',
-      is_edited: false,
-      updated_at: 'Kemarin',
-    },
-  ],
-};
+export const initialLessonReviews = {};

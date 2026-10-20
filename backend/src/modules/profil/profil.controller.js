@@ -9,7 +9,11 @@ import { query } from '../../config/db.js';
 import { dbStore } from '../../data/dbStore.js';
 
 export async function getProfil(req, res) {
-  const idAkun = req.user?.id_akun || '11111111-1111-1111-1111-111111111111';
+  const idAkun = req.user?.id_akun;
+  if (!idAkun) {
+    return res.status(200).json({ profil_user: null });
+  }
+
   try {
     const result = await query(
       `SELECT a.id_akun, a.nama_lengkap, a.email, a.role,
@@ -27,12 +31,15 @@ export async function getProfil(req, res) {
     // Gunakan dbStore
   }
 
-  const user = dbStore.findUserById(idAkun) || dbStore.getUsers()[0];
-  return res.status(200).json({ profil_user: user });
+  const user = dbStore.findUserById(idAkun);
+  return res.status(200).json({ profil_user: user || null });
 }
 
 export async function updateProfil(req, res) {
-  const idAkun = req.user?.id_akun || '11111111-1111-1111-1111-111111111111';
+  const idAkun = req.user?.id_akun;
+  if (!idAkun) {
+    return res.status(401).json({ message: 'Silakan login terlebih dahulu untuk memperbarui profil.' });
+  }
   const { nama_lengkap, nama, lokasi_default, kategori_rentan, foto_profil, username, umur, peringatan_aqi_100 } = req.body;
   const namaBaru = (nama_lengkap || nama || '').trim();
 

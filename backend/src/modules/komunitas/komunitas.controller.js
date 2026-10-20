@@ -60,7 +60,7 @@ export async function createPostKomunitas(req, res) {
     id: `post-${Date.now()}`,
     title: req.body.judul_post,
     caption: req.body.isi_konten,
-    author: req.user?.nama_lengkap || 'Aditya Nugraha',
+    author: req.user?.nama_lengkap || 'Pengguna',
     time: 'Baru saja',
     date: new Date().toISOString(),
     photo: req.body.media_lampiran || '',
@@ -137,9 +137,9 @@ export async function createLaporanPolusi(req, res) {
   const newReport = {
     id: `rep-${Date.now()}`,
     ticket: nomorTiket,
-    author: req.user?.nama_lengkap || 'Aditya Nugraha',
-    user: req.user?.username || '@adityanugraha',
-    avatar: req.user?.foto_profil || 'https://images.unsplash.com/photo-1630678334641-0c5339dfd1a7?auto=format&fit=crop&w=500&q=85',
+    author: req.user?.nama_lengkap || 'Pengguna',
+    user: req.user?.username || (req.user?.email ? `@${req.user.email.split('@')[0]}` : '@pengguna'),
+    avatar: req.user?.foto_profil || '',
     city: kota,
     area: area || `${kota} Pusat`,
     address: alamat,
@@ -188,7 +188,7 @@ export async function addCommentToPost(req, res) {
 
   const commentObj = {
     id: `c-${Date.now()}`,
-    author: req.user?.nama_lengkap || 'Aditya Nugraha',
+    author: req.user?.nama_lengkap || 'Pengguna',
     text: text.trim(),
     time: 'Baru saja',
   };

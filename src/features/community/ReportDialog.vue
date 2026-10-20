@@ -10,6 +10,7 @@
 import { ref, reactive, onMounted, onBeforeUnmount } from 'vue';
 import { detectUserLocationViaOpenStreetMap } from '../../services/osmMapService';
 import { apiRequest } from '../../services/apiClient';
+import { userProfileStore } from '../auth/authStore';
 import AppIcon from '../../components/common/AppIcon.vue';
 
 const props = defineProps({
@@ -173,7 +174,7 @@ function handleAddComment() {
     ...props.report,
     comments: [
       ...(props.report.comments || []),
-      { name: 'adityanugraha', text: comment.value.trim() },
+      { name: userProfileStore.username || userProfileStore.nama_lengkap || 'Pengguna', text: comment.value.trim() },
     ],
   };
   emit('save', updated);
@@ -387,14 +388,14 @@ const conditionMap = {
         </div>
         <div class="report-detail-info">
           <div class="report-author">
-            <span class="avatar">AN</span>
+            <span class="avatar">{{ (report.author || 'Pengguna').slice(0, 2).toUpperCase() }}</span>
             <div>
-              <strong>{{ report.author || 'Aditya Nugraha' }}</strong>
+              <strong>{{ report.author || 'Pengguna PoluSee' }}</strong>
               <small>{{ report.area }} · {{ report.city }}</small>
             </div>
           </div>
           <p class="report-caption">
-            <strong>{{ report.user || '@adityanugraha' }}</strong> {{ report.caption }}
+            <strong>{{ report.user || '@pengguna' }}</strong> {{ report.caption }}
           </p>
           <dl class="report-facts">
             <div>

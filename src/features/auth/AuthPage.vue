@@ -25,6 +25,7 @@ const loading = ref(false);
 
 const nameInput = ref('');
 const emailInput = ref('');
+const cityInput = ref('Samarinda');
 const passwordInput = ref('');
 const confirmPasswordInput = ref('');
 
@@ -65,6 +66,7 @@ async function handleSubmit() {
         email: emailInput.value,
         password: passwordInput.value,
         confirmPassword: confirmPasswordInput.value,
+        lokasi_default: cityInput.value || 'Samarinda',
       });
       emit('navigate', 'login');
       visible.value = false;
@@ -123,24 +125,11 @@ async function handleSubmit() {
             <span>Kredensial Default Siap Pakai:</span>
             <span class="rounded bg-[#edce7e] px-2 py-0.5 text-[10px] text-[#285765] font-semibold">Tinggal Klik</span>
           </div>
-          <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
-            <button
-              type="button"
-              @click="fillUserCredentials"
-              class="flex flex-col text-left p-2 rounded-lg border border-[#aeb9ae] bg-white hover:border-[#285765] hover:bg-[#285765]/10 transition cursor-pointer shadow-xs"
-            >
-              <div class="flex items-center justify-between font-semibold text-[#285765]">
-                <span>👤 Akun User</span>
-                <span class="text-[10px] text-[#285765] font-normal underline">Klik isi otomatis</span>
-              </div>
-              <div class="mt-1 font-mono text-[11px] text-[#33443d]">user@polusee.id</div>
-              <div class="text-[11px] text-[#66756f]">Password: <span class="font-mono font-bold text-[#285765]">user123</span></div>
-            </button>
-
+          <div class="space-y-2 text-xs">
             <button
               type="button"
               @click="fillAdminCredentials"
-              class="flex flex-col text-left p-2 rounded-lg border border-[#aeb9ae] bg-white hover:border-[#285765] hover:bg-[#285765]/10 transition cursor-pointer shadow-xs"
+              class="w-full flex flex-col text-left p-2.5 rounded-lg border border-[#aeb9ae] bg-white hover:border-[#285765] hover:bg-[#285765]/10 transition cursor-pointer shadow-xs"
             >
               <div class="flex items-center justify-between font-semibold text-[#285765]">
                 <span>🛡️ Akun Admin</span>
@@ -149,6 +138,16 @@ async function handleSubmit() {
               <div class="mt-1 font-mono text-[11px] text-[#33443d]">admin@polusee.id</div>
               <div class="text-[11px] text-[#66756f]">Password: <span class="font-mono font-bold text-[#285765]">admin123</span></div>
             </button>
+            <div class="flex items-center justify-between px-1 text-[11px] text-[#556961]">
+              <span>Ingin masuk sebagai User biasa?</span>
+              <button
+                type="button"
+                @click="navigate('register')"
+                class="font-semibold text-[#285765] underline cursor-pointer hover:text-[#1d3f4a]"
+              >
+                Daftar Akun Baru →
+              </button>
+            </div>
           </div>
         </div>
 
@@ -163,6 +162,19 @@ async function handleSubmit() {
               required
               maxlength="100"
             />
+          </label>
+          <label v-if="registering" class="form-label">
+            Kota domisili (asal)
+            <select v-model="cityInput" name="city">
+              <option value="Samarinda">Samarinda</option>
+              <option value="Balikpapan">Balikpapan</option>
+              <option value="Jakarta">Jakarta</option>
+              <option value="Bandung">Bandung</option>
+              <option value="Surabaya">Surabaya</option>
+              <option value="Yogyakarta">Yogyakarta</option>
+              <option value="Medan">Medan</option>
+              <option value="Makassar">Makassar</option>
+            </select>
           </label>
           <label class="form-label">
             Email

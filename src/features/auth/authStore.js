@@ -8,19 +8,31 @@
 import { reactive } from 'vue';
 import { apiRequest, setStoredSession, clearStoredSession } from '../../services/apiClient';
 
-export const userProfileStore = reactive({
-  id_akun: 'user-demo-001',
-  nama_lengkap: 'Aditya Nugraha',
-  username: '@adityanugraha',
-  email: 'aditya@polusee.id',
-  umur: 28,
-  lokasi_default: 'Samarinda',
-  kategori_rentan: 'Umum',
-  peringatan_aqi_100: true,
-  foto_profil:
-    'https://images.unsplash.com/photo-1630678334641-0c5339dfd1a7?auto=format&fit=crop&w=500&q=85',
-  role: 'USER',
-});
+function getInitialProfile() {
+  try {
+    const raw = localStorage.getItem('polusee_active_user');
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed && (parsed.email || parsed.nama_lengkap)) {
+        return parsed;
+      }
+    }
+  } catch {}
+  return {
+    id_akun: '',
+    nama_lengkap: '',
+    username: '',
+    email: '',
+    umur: null,
+    lokasi_default: 'Samarinda',
+    kategori_rentan: 'Umum',
+    peringatan_aqi_100: false,
+    foto_profil: '',
+    role: '',
+  };
+}
+
+export const userProfileStore = reactive(getInitialProfile());
 
 /**
  * Autentikasi Login (UC-01 SKPL: POST /api/auth/login)
@@ -107,4 +119,16 @@ export async function updateProfileData(payload) {
 
 export function logoutAccount() {
   clearStoredSession();
+  Object.assign(userProfileStore, {
+    id_akun: '',
+    nama_lengkap: '',
+    username: '',
+    email: '',
+    umur: null,
+    lokasi_default: 'Samarinda',
+    kategori_rentan: 'Umum',
+    peringatan_aqi_100: false,
+    foto_profil: '',
+    role: '',
+  });
 }

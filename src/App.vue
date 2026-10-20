@@ -332,7 +332,7 @@ async function fetchGlobalData() {
 
     if (feedRes.status === 'fulfilled') {
       const feedItems = feedRes.value?.reports || feedRes.value?.feed_komunitas;
-      if (Array.isArray(feedItems) && feedItems.length > 0) {
+      if (Array.isArray(feedItems)) {
         reports.value = feedItems.map((r) => {
           const img =
             r.image ||
@@ -346,7 +346,7 @@ async function fetchGlobalData() {
             avatar:
               r.avatar ||
               r.foto_profil ||
-              'https://images.unsplash.com/photo-1630678334641-0c5339dfd1a7?auto=format&fit=crop&w=500&q=85',
+              '',
           };
         });
       }
@@ -403,7 +403,7 @@ function handleCreateReportSaved(created) {
     avatar:
       created.avatar ||
       userProfileStore.foto_profil ||
-      'https://images.unsplash.com/photo-1630678334641-0c5339dfd1a7?auto=format&fit=crop&w=500&q=85',
+      '',
   };
   reports.value = [norm, ...reports.value];
 }
@@ -536,15 +536,19 @@ onBeforeUnmount(() => {
             </div>
           </div>
           <div class="flex items-center gap-2 pl-2 border-l border-[#aeb9ae]/50">
-            <div class="hidden sm:flex flex-col text-right">
-              <span class="text-xs font-semibold text-[#285765] leading-tight">{{ userProfileStore.nama_lengkap }}</span>
+            <div v-if="userProfileStore.email" class="hidden sm:flex flex-col text-right">
+              <span class="text-xs font-semibold text-[#285765] leading-tight">{{ userProfileStore.nama_lengkap || userProfileStore.email }}</span>
               <span class="text-[10px] text-[#71827a] leading-none">{{ userProfileStore.email }} · <span class="rounded bg-[#edce7e]/60 px-1 font-bold text-[#285765]">{{ userProfileStore.role || 'USER' }}</span></span>
+            </div>
+            <div v-else class="hidden sm:flex flex-col text-right">
+              <span class="text-xs font-semibold text-[#285765] leading-tight">Pengunjung</span>
+              <span class="text-[10px] text-[#71827a] leading-none">Belum Masuk</span>
             </div>
             <button
               class="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-[#aeb9ae] bg-white text-[#285765] text-xs font-medium hover:border-[#285765] hover:bg-[#285765] hover:text-white transition cursor-pointer shadow-2xs"
               type="button"
-              aria-label="Ganti Akun atau Keluar"
-              title="Ganti Akun / Logout"
+              :aria-label="userProfileStore.email ? 'Ganti Akun atau Keluar' : 'Masuk ke Akun'"
+              :title="userProfileStore.email ? 'Ganti Akun / Logout' : 'Masuk / Login'"
               @click="handleLogout"
             >
               <svg
@@ -560,7 +564,7 @@ onBeforeUnmount(() => {
               >
                 <path d="M10 17l5-5-5-5M15 12H3M14 4h5a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-5" />
               </svg>
-             
+              <span>{{ userProfileStore.email ? 'Keluar' : 'Masuk' }}</span>
             </button>
           </div>
         </div>

@@ -232,27 +232,15 @@ const INITIAL_DATA = {
 
 class DataStore {
   constructor() {
-    this.data = this.loadData();
+    this.data = JSON.parse(JSON.stringify(INITIAL_DATA));
   }
 
   loadData() {
-    try {
-      if (fs.existsSync(DATA_FILE)) {
-        const raw = fs.readFileSync(DATA_FILE, 'utf-8');
-        return JSON.parse(raw);
-      }
-    } catch (e) {
-      console.warn('[DataStore] Gagal membaca file data, menggunakan memori:', e.message);
-    }
     return JSON.parse(JSON.stringify(INITIAL_DATA));
   }
 
   saveData() {
-    try {
-      fs.writeFileSync(DATA_FILE, JSON.stringify(this.data, null, 2), 'utf-8');
-    } catch (e) {
-      console.warn('[DataStore] Gagal menyimpan file data:', e.message);
-    }
+    // In-memory only
   }
 
   getUsers() {

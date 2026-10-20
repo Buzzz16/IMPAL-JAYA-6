@@ -33,12 +33,9 @@ if (targetPath) {
       // Abaikan jika sudah di-load
     }
   }
-
   // Juga dukung dotenv jika terpasang
   try {
     const { default: dotenv } = await import('dotenv');
     dotenv.config({ path: targetPath });
-  } catch {
-    // Paket dotenv belum di-install, native loadEnvFile sudah menangani
-  }
+  } catch {}
 }

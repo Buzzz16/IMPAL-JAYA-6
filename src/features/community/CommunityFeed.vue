@@ -20,6 +20,10 @@ const props = defineProps({
     type: String,
     default: 'Samarinda',
   },
+  loading: {
+    type: Boolean,
+    default: false,
+  },
 });
 
 const emit = defineEmits(['create-report', 'select-report', 'toggle-like']);
@@ -114,9 +118,31 @@ const displayReports = computed(() => {
 
     <!-- Feed List -->
     <div class="mx-auto mt-6 flex max-w-2xl flex-col gap-5 sm:gap-7">
-      <!-- Empty State jika belum ada laporan di kota yang dipilih -->
+      <!-- Loading Skeleton State saat data sedang dimuat dari database -->
+      <div v-if="loading" class="flex flex-col gap-4">
+        <div
+          v-for="i in 3"
+          :key="i"
+          class="rounded-2xl border border-[var(--line)] bg-[var(--paper)] p-5 animate-pulse"
+        >
+          <div class="flex items-center gap-3">
+            <div class="h-9 w-9 rounded-full bg-[var(--line)]/60"></div>
+            <div class="flex-1 space-y-2">
+              <div class="h-3.5 w-1/3 rounded bg-[var(--line)]/60"></div>
+              <div class="h-2.5 w-1/4 rounded bg-[var(--line)]/40"></div>
+            </div>
+          </div>
+          <div class="mt-4 space-y-2">
+            <div class="h-3 w-4/5 rounded bg-[var(--line)]/50"></div>
+            <div class="h-3 w-2/3 rounded bg-[var(--line)]/40"></div>
+          </div>
+          <div class="mt-4 h-48 w-full rounded-xl bg-[var(--line)]/30"></div>
+        </div>
+      </div>
+
+      <!-- Empty State HANYA jika selesai loading dan belum ada laporan -->
       <div
-        v-if="displayReports.length === 0"
+        v-else-if="displayReports.length === 0"
         class="rounded-2xl border border-dashed border-[var(--line)] bg-[var(--paper)] p-6 sm:p-8 text-center"
       >
         <div class="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-[var(--yellow)]/40 text-[#285765]">

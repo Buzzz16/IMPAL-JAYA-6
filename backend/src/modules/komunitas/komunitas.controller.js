@@ -8,6 +8,35 @@
 import { query } from '../../config/db.js';
 import { dbStore } from '../../data/dbStore.js';
 
+function mapSupabaseRowToReport(row) {
+  const photo = row.url_foto_bukti || row.media_lampiran || '';
+  return {
+    id: `post-${row.id_post}`,
+    id_post: row.id_post,
+    ticket: row.nomor_tiket || `#TKT-${row.id_post}`,
+    author: row.nama_lengkap || 'Pengguna PoluSee',
+    user: `@${(row.nama_lengkap || 'pengguna').toLowerCase().replace(/\s+/g, '')}`,
+    avatar: 'https://images.unsplash.com/photo-1630678334641-0c5339dfd1a7?auto=format&fit=crop&w=500&q=85',
+    city: 'Samarinda',
+    area: row.alamat_lokasi || 'Samarinda',
+    address: row.alamat_lokasi || 'Samarinda',
+    condition: row.kategori_polusi || 'Asap & Debu',
+    category: row.kategori_polusi || 'Asap & Debu',
+    caption: row.isi_konten || row.judul_post || '',
+    time: row.created_at ? new Date(row.created_at).toLocaleDateString('id-ID') : 'Baru saja',
+    date: row.created_at || new Date().toISOString(),
+    status: row.status_verifikasi || 'TERVERIFIKASI',
+    badge: row.status_verifikasi || 'TERVERIFIKASI',
+    photo: photo || 'https://images.unsplash.com/photo-1555066657-4ea53882eaba?auto=format&fit=crop&w=1200&q=85',
+    image: photo || 'https://images.unsplash.com/photo-1555066657-4ea53882eaba?auto=format&fit=crop&w=1200&q=85',
+    url_foto_bukti: photo,
+    lat: row.latitude ? Number(row.latitude) : -0.5022,
+    lon: row.longitude ? Number(row.longitude) : 117.1536,
+    likes: 1,
+    comments: [],
+  };
+}
+
 // UC-08: Ambil Feed Komunitas
 export async function getFeedKomunitas(_req, res) {
   try {
@@ -22,29 +51,7 @@ export async function getFeedKomunitas(_req, res) {
        ORDER BY p.created_at DESC`
     );
     if (result && result.rows.length > 0) {
-      const reports = result.rows.map((row) => ({
-        id: `post-${row.id_post}`,
-        ticket: row.nomor_tiket || `#TKT-${row.id_post}`,
-        author: row.nama_lengkap || 'Pengguna PoluSee',
-        user: `@${(row.nama_lengkap || 'pengguna').toLowerCase().replace(/\s+/g, '')}`,
-        avatar: row.foto_profil || 'https://images.unsplash.com/photo-1630678334641-0c5339dfd1a7?auto=format&fit=crop&w=500&q=85',
-        city: 'Samarinda',
-        area: row.alamat_lokasi || 'Samarinda',
-        address: row.alamat_lokasi || 'Samarinda',
-        condition: row.kategori_polusi || 'Asap & Debu',
-        category: row.kategori_polusi || 'Asap & Debu',
-        caption: row.isi_konten || row.judul_post,
-        time: new Date(row.created_at).toLocaleDateString('id-ID'),
-        date: row.created_at,
-        status: row.status_verifikasi || 'TERVERIFIKASI',
-        badge: row.status_verifikasi || 'TERVERIFIKASI',
-        photo: row.url_foto_bukti || row.media_lampiran || 'https://images.unsplash.com/photo-1555066657-4ea53882eaba?auto=format&fit=crop&w=1200&q=85',
-        lat: row.latitude ? Number(row.latitude) : -0.5022,
-        lon: row.longitude ? Number(row.longitude) : 117.1536,
-        likes: 0,
-        comments: [],
-      }));
-      return res.status(200).json({ feed_komunitas: result.rows, reports });
+      return res.status(200).json({ feed_komunitas: result.rows, reports: dbStore.getReports() });
     }
   } catch (err) {
     console.error('[Komunitas Feed Error]:', err.message);

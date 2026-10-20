@@ -62,6 +62,21 @@
       "kategori_rentan": "Umum",
       "peringatan_aqi_100": true,
       "foto_profil": ""
+    },
+    {
+      "id_akun": "69fa720d-ec40-4227-98d6-50fdddc60609",
+      "nama_lengkap": "anjas",
+      "email": "anjas@polusee.id",
+      "password_hash": "$2a$10$UfOz9Um8eu3AfnPjYWMYs.jD2Ko6mh6wIMZVB1.44hgaH.b5LOBDe",
+      "role": "USER",
+      "status_aktif": true,
+      "umur": 25,
+      "lokasi_default": "Samarinda",
+      "latitude": -0.5022,
+      "longitude": 117.1536,
+      "kategori_rentan": "Umum",
+      "peringatan_aqi_100": true,
+      "foto_profil": ""
     }
   ],
   "rekomendasi": [

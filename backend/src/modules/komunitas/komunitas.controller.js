@@ -13,18 +13,41 @@ export async function getFeedKomunitas(_req, res) {
   try {
     const result = await query(
       `SELECT p.*, l.nomor_tiket, l.kategori_polusi, l.alamat_lokasi, l.latitude, l.longitude,
-              l.url_foto_bukti, l.status_verifikasi, a.nama_lengkap
+              l.url_foto_bukti, l.status_verifikasi, a.nama_lengkap, u.foto_profil
        FROM post_komunitas p
        LEFT JOIN laporan_polusi l ON p.id_post = l.id_post
        LEFT JOIN akun a ON p.id_user = a.id_akun
+       LEFT JOIN users u ON p.id_user = u.id_akun
        WHERE p.status_moderasi = 'AKTIF'
        ORDER BY p.created_at DESC`
     );
     if (result && result.rows.length > 0) {
-      return res.status(200).json({ feed_komunitas: result.rows, reports: dbStore.getReports() });
+      const reports = result.rows.map((row) => ({
+        id: `post-${row.id_post}`,
+        ticket: row.nomor_tiket || `#TKT-${row.id_post}`,
+        author: row.nama_lengkap || 'Pengguna PoluSee',
+        user: `@${(row.nama_lengkap || 'pengguna').toLowerCase().replace(/\s+/g, '')}`,
+        avatar: row.foto_profil || 'https://images.unsplash.com/photo-1630678334641-0c5339dfd1a7?auto=format&fit=crop&w=500&q=85',
+        city: 'Samarinda',
+        area: row.alamat_lokasi || 'Samarinda',
+        address: row.alamat_lokasi || 'Samarinda',
+        condition: row.kategori_polusi || 'Asap & Debu',
+        category: row.kategori_polusi || 'Asap & Debu',
+        caption: row.isi_konten || row.judul_post,
+        time: new Date(row.created_at).toLocaleDateString('id-ID'),
+        date: row.created_at,
+        status: row.status_verifikasi || 'TERVERIFIKASI',
+        badge: row.status_verifikasi || 'TERVERIFIKASI',
+        photo: row.url_foto_bukti || row.media_lampiran || 'https://images.unsplash.com/photo-1555066657-4ea53882eaba?auto=format&fit=crop&w=1200&q=85',
+        lat: row.latitude ? Number(row.latitude) : -0.5022,
+        lon: row.longitude ? Number(row.longitude) : 117.1536,
+        likes: 0,
+        comments: [],
+      }));
+      return res.status(200).json({ feed_komunitas: result.rows, reports });
     }
-  } catch {
-    // Gunakan dbStore
+  } catch (err) {
+    console.error('[Komunitas Feed Error]:', err.message);
   }
   return res.status(200).json({
     feed_komunitas: dbStore.getReports(),
@@ -36,10 +59,22 @@ export async function getFeedKomunitas(_req, res) {
 export async function createPostKomunitas(req, res) {
   try {
     const { judul_post, isi_konten, media_lampiran } = req.body;
-    const idUser = req.user?.id_akun || '11111111-1111-1111-1111-111111111111';
+    let idUser = req.user?.id_akun || '11111111-1111-1111-1111-111111111111';
 
     if (!judul_post || !isi_konten) {
       return res.status(400).json({ message: 'Judul dan isi post wajib diisi.' });
+    }
+
+    try {
+      const checkUser = await query('SELECT id_akun FROM users WHERE id_akun = $1', [idUser]);
+      if (!checkUser || checkUser.rows.length === 0) {
+        await query(
+          'INSERT INTO users (id_akun, lokasi_default) VALUES ($1, $2) ON CONFLICT DO NOTHING',
+          [idUser, 'Samarinda']
+        );
+      }
+    } catch {
+      idUser = '11111111-1111-1111-1111-111111111111';
     }
 
     const insertRes = await query(
@@ -88,7 +123,7 @@ export async function createLaporanPolusi(req, res) {
     url_foto_bukti,
   } = req.body;
 
-  const idUser = req.user?.id_akun || '11111111-1111-1111-1111-111111111111';
+  let idUser = req.user?.id_akun || '11111111-1111-1111-1111-111111111111';
   const deskripsi = (deskripsi_kejadian || caption || '').trim();
   const kategori = kategori_polusi || source || condition || 'Asap & Debu';
   const kota = city || 'Samarinda';
@@ -101,6 +136,19 @@ export async function createLaporanPolusi(req, res) {
   }
 
   try {
+    // Pastikan user ada di tabel users agar foreign key relasi tidak gagal
+    try {
+      const checkUser = await query('SELECT id_akun FROM users WHERE id_akun = $1', [idUser]);
+      if (!checkUser || checkUser.rows.length === 0) {
+        await query(
+          'INSERT INTO users (id_akun, lokasi_default) VALUES ($1, $2) ON CONFLICT DO NOTHING',
+          [idUser, kota]
+        );
+      }
+    } catch {
+      idUser = '11111111-1111-1111-1111-111111111111';
+    }
+
     const postRes = await query(
       `INSERT INTO post_komunitas (id_user, judul_post, isi_konten, media_lampiran, status_moderasi)
        VALUES ($1, $2, $3, $4, 'AKTIF')
@@ -115,7 +163,7 @@ export async function createLaporanPolusi(req, res) {
            nomor_tiket, id_post, id_user, kategori_polusi, deskripsi_kejadian,
            alamat_lokasi, latitude, longitude, url_foto_bukti, status_verifikasi
          )
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'PENDING')
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'TERVERIFIKASI')
          RETURNING *`,
         [
           nomorTiket,
@@ -129,16 +177,17 @@ export async function createLaporanPolusi(req, res) {
           foto,
         ]
       );
+      console.log(`[Komunitas Supabase]: Laporan ${nomorTiket} berhasil disimpan ke database Supabase!`);
     }
-  } catch {
-    // Gunakan dbStore
+  } catch (err) {
+    console.error('[Komunitas Error]: Gagal simpan ke Supabase:', err.message);
   }
 
   const newReport = {
     id: `rep-${Date.now()}`,
     ticket: nomorTiket,
-    author: req.user?.nama_lengkap || 'Aditya Nugraha',
-    user: req.user?.username || '@adityanugraha',
+    author: req.user?.nama_lengkap || 'Pengguna PoluSee',
+    user: req.user?.username || '@pengguna',
     avatar: req.user?.foto_profil || 'https://images.unsplash.com/photo-1630678334641-0c5339dfd1a7?auto=format&fit=crop&w=500&q=85',
     city: kota,
     area: area || `${kota} Pusat`,
@@ -153,7 +202,7 @@ export async function createLaporanPolusi(req, res) {
     photo: foto || 'https://images.unsplash.com/photo-1555066657-4ea53882eaba?auto=format&fit=crop&w=1200&q=85',
     lat: latitude ? Number(latitude) : -0.5022,
     lon: longitude ? Number(longitude) : 117.1536,
-    likes: 1,
+    likes: 0,
     comments: [],
   };
 

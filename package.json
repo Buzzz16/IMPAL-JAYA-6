@@ -5,7 +5,9 @@
   "description": "PoluSee Web Platform - Aplikasi Pemantau dan Penghimbau Kualitas Udara (Vue.js, Express.js, PostgreSQL, OpenStreetMap API) mengacu pada SKPL-1000 Revisi C",
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "dev": "node scripts/dev.js",
+    "dev:frontend": "vite",
+    "dev:backend": "node --watch backend/server.js",
     "build": "vite build",
     "preview": "vite preview",
     "server": "node backend/server.js",

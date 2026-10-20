@@ -5,15 +5,24 @@ import { fileURLToPath } from 'node:url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Target file: backend/src/.env.local
-const envLocalPath = path.resolve(__dirname, '../.env.local');
-const fallbackPath = path.resolve(__dirname, '../../.env.local');
+// Cari file .env.local atau .env di root (luar), backend/, atau backend/src/
+const candidatePaths = [
+  path.resolve(__dirname, '../../../.env.local'), // 1. Root .env.local (di luar)
+  path.resolve(__dirname, '../../../.env'),       // 2. Root .env (di luar)
+  path.resolve(__dirname, '../.env.local'),       // 3. backend/src/.env.local
+  path.resolve(__dirname, '../../.env.local'),    // 4. backend/.env.local
+  path.resolve(__dirname, '../../.env'),          // 5. backend/.env
+  path.resolve(process.cwd(), '.env.local'),      // 6. Current working dir .env.local
+  path.resolve(process.cwd(), '.env'),            // 7. Current working dir .env
+];
 
-const targetPath = fs.existsSync(envLocalPath)
-  ? envLocalPath
-  : fs.existsSync(fallbackPath)
-  ? fallbackPath
-  : null;
+let targetPath = null;
+for (const p of candidatePaths) {
+  if (fs.existsSync(p)) {
+    targetPath = p;
+    break;
+  }
+}
 
 if (targetPath) {
   // Dukung native Node.js loadEnvFile (Node 20+)

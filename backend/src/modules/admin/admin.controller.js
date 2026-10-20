@@ -197,7 +197,15 @@ export async function getAntreanModerasi(_req, res) {
        ORDER BY p.created_at DESC`
     );
     if (result && result.rows.length > 0) {
-      return res.status(200).json({ daftar_moderasi: result.rows, reports: dbStore.getReports() });
+      const reports = result.rows.map((r) => ({
+        id: `post-${r.id_post}`,
+        ticket: r.nomor_tiket || `#TKT-${r.id_post}`,
+        caption: r.isi_konten || r.judul_post,
+        status: r.status_verifikasi || 'TERVERIFIKASI',
+        date: r.created_at,
+        time: new Date(r.created_at).toLocaleDateString('id-ID'),
+      }));
+      return res.status(200).json({ daftar_moderasi: result.rows, reports });
     }
   } catch {
     // Selesai

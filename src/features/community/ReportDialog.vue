@@ -164,18 +164,25 @@ async function handleSaveReport() {
     url_foto_bukti: img,
   };
 
+  let savedData = updated;
   try {
     if (props.creating) {
-      await apiRequest('/komunitas/lapor', {
+      const res = await apiRequest('/komunitas/lapor', {
         method: 'POST',
         body: JSON.stringify(updated),
       });
+      if (res && (res.laporan || res.report)) {
+        savedData = {
+          ...updated,
+          ...(res.laporan || res.report),
+        };
+      }
     }
   } catch {
     // Tetap disimpan ke state lokal apabila server backend belum dinyalakan
   }
 
-  emit('save', updated);
+  emit('save', savedData);
   if (props.creating) {
     emit('close');
   } else {

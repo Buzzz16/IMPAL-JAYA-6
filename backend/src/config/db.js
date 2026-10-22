@@ -45,20 +45,15 @@ pool.on('error', (err) => {
   console.warn('[PostgreSQL Pool Warning]:', err.message);
 });
 
-// Tes koneksi database di awal secara ramah & inisialisasi tabel like & komentar
+// Tes koneksi database di awal secara ramah & inisialisasi kolom like & tabel komentar
 export async function ensureTablesExist() {
   try {
     await pool.query(`
-      CREATE TABLE IF NOT EXISTS like_post (
-        id_like SERIAL PRIMARY KEY,
-        id_post INTEGER NOT NULL REFERENCES post_komunitas(id_post) ON DELETE CASCADE,
-        id_user UUID REFERENCES users(id_akun) ON DELETE CASCADE,
-        client_id VARCHAR(100),
-        created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
-      );
-      CREATE UNIQUE INDEX IF NOT EXISTS unq_like_user ON like_post (id_post, id_user) WHERE id_user IS NOT NULL;
-      CREATE UNIQUE INDEX IF NOT EXISTS unq_like_client ON like_post (id_post, client_id) WHERE client_id IS NOT NULL;
-      CREATE INDEX IF NOT EXISTS idx_like_post_id ON like_post (id_post);
+      ALTER TABLE post_komunitas 
+        ADD COLUMN IF NOT EXISTS jumlah_like INTEGER NOT NULL DEFAULT 0,
+        ADD COLUMN IF NOT EXISTS liked_by TEXT[] NOT NULL DEFAULT '{}';
+
+      DROP TABLE IF EXISTS like_post CASCADE;
 
       CREATE TABLE IF NOT EXISTS komentar_post (
         id_komentar SERIAL PRIMARY KEY,
@@ -70,7 +65,7 @@ export async function ensureTablesExist() {
       );
       CREATE INDEX IF NOT EXISTS idx_komentar_post_id ON komentar_post (id_post);
     `);
-    console.log('[Database Schema]: Tabel like_post & komentar_post siap di Supabase.');
+    console.log('[Database Schema]: Kolom like pada post_komunitas & tabel komentar_post siap di Supabase.');
   } catch (err) {
     console.warn('[Database Schema Warning]:', err.message);
   }

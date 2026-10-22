@@ -21,6 +21,7 @@ export async function getProfil(req, res) {
     );
 
     if (result && result.rows.length > 0) {
+      res.locals.dbLog = 'Data profil pengguna dimuat';
       return res.status(200).json({ profil_user: result.rows[0] });
     }
   } catch {

@@ -58,9 +58,12 @@ app.use((req, res, next) => {
 
     // Log request API dan Web
     if (originalUrl.startsWith('/api')) {
+      const dbTag = res.locals.dbLog
+        ? ` \x1b[36m[DB Supabase]\x1b[0m ${res.locals.dbLog}`
+        : '';
       console.log(
         `${dim}[${time}]${reset} ${bold}[API]${reset} ${bold}${method.padEnd(6)}${reset} ${originalUrl} ` +
-        `-> ${statusColor}${bold}${statusCode} ${res.statusMessage || ''}${reset} ${dim}(${duration}ms)${reset}`
+        `-> ${statusColor}${bold}${statusCode} ${res.statusMessage || ''}${reset} ${dim}(${duration}ms)${reset}${dbTag}`
       );
     } else if (originalUrl === '/' || statusCode >= 400) {
       console.log(

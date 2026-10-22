@@ -65,7 +65,6 @@ export async function ensureTablesExist() {
       );
       CREATE INDEX IF NOT EXISTS idx_komentar_post_id ON komentar_post (id_post);
     `);
-    console.log('[Database Schema]: Kolom like pada post_komunitas & tabel komentar_post siap di Supabase.');
   } catch (err) {
     console.warn('[Database Schema Warning]:', err.message);
   }

@@ -224,30 +224,90 @@ export async function updateStatusModerasi(req, res) {
       .json({ message: 'Catatan alasan wajib diisi untuk penolakan atau penghapusan konten.' });
   }
 
+  // Parse ID (dukung integer murni, 'post-1', 'rep-1', atau nomor tiket)
+  let targetPostId = null;
+  const cleanStr = String(id || '').trim();
+  const matchNum = cleanStr.replace(/^post-/, '').replace(/^rep-/, '');
+  if (!Number.isNaN(Number(matchNum)) && Number(matchNum) > 0) {
+    targetPostId = Number(matchNum);
+  } else {
+    try {
+      const ticketRes = await query('SELECT id_post FROM laporan_polusi WHERE nomor_tiket = $1', [cleanStr]);
+      if (ticketRes && ticketRes.rows.length > 0) {
+        targetPostId = ticketRes.rows[0].id_post;
+      }
+    } catch (err) {
+      console.warn('[Moderasi DB Find Error]:', err.message);
+    }
+  }
+
   try {
-    if (['AKTIF', 'DISEMBUNYIKAN', 'DIHAPUS'].includes(status)) {
-      await query('UPDATE post_komunitas SET status_moderasi = $1 WHERE id_post = $2', [
-        status,
-        id,
-      ]);
+    if (status === 'DIHAPUS') {
+      if (targetPostId) {
+        await query('DELETE FROM post_komunitas WHERE id_post = $1', [targetPostId]);
+      }
+    } else if (['AKTIF', 'DISEMBUNYIKAN'].includes(status)) {
+      if (targetPostId) {
+        await query('UPDATE post_komunitas SET status_moderasi = $1 WHERE id_post = $2', [
+          status,
+          targetPostId,
+        ]);
+      }
     }
+
     if (['PENDING', 'TERVERIFIKASI', 'DITOLAK'].includes(status)) {
-      await query('UPDATE laporan_polusi SET status_verifikasi = $1 WHERE id_post = $2', [
-        status,
-        id,
-      ]);
+      if (targetPostId) {
+        await query('UPDATE laporan_polusi SET status_verifikasi = $1 WHERE id_post = $2', [
+          status,
+          targetPostId,
+        ]);
+      }
     }
-  } catch {
-    // Selesai
+  } catch (err) {
+    console.error('[Moderasi DB Update Error]:', err.message);
   }
 
   if (status === 'DIHAPUS') {
     dbStore.deleteReport(id);
+    dbStore.deleteReport(cleanStr);
+    if (targetPostId) dbStore.deleteReport(`post-${targetPostId}`);
   } else {
     dbStore.updateReportStatus(id, status, catatan);
   }
 
   return res.status(200).json({ message: 'Status moderasi berhasil diperbarui' });
+}
+
+// UC-14: Hapus Konten Komunitas Permanen (DELETE)
+export async function hapusPostModerasi(req, res) {
+  const { id } = req.params;
+  let targetPostId = null;
+  const cleanStr = String(id || '').trim();
+  const matchNum = cleanStr.replace(/^post-/, '').replace(/^rep-/, '');
+  if (!Number.isNaN(Number(matchNum)) && Number(matchNum) > 0) {
+    targetPostId = Number(matchNum);
+  } else {
+    try {
+      const ticketRes = await query('SELECT id_post FROM laporan_polusi WHERE nomor_tiket = $1', [cleanStr]);
+      if (ticketRes && ticketRes.rows.length > 0) {
+        targetPostId = ticketRes.rows[0].id_post;
+      }
+    } catch {}
+  }
+
+  try {
+    if (targetPostId) {
+      await query('DELETE FROM post_komunitas WHERE id_post = $1', [targetPostId]);
+    }
+  } catch (err) {
+    console.error('[Hapus Post DB Error]:', err.message);
+  }
+
+  dbStore.deleteReport(id);
+  dbStore.deleteReport(cleanStr);
+  if (targetPostId) dbStore.deleteReport(`post-${targetPostId}`);
+
+  return res.status(200).json({ message: 'Konten berhasil dihapus permanen dari database.' });
 }
 
 // UC-15: Bagikan Dan Ubah Konten Edukasi
@@ -276,7 +336,35 @@ export async function simpanAtauUbahEdukasiAdmin(req, res) {
     return res.status(400).json({ message: 'Judul dan isi materi edukasi wajib diisi.' });
   }
 
-  const articleId = id || id_konten || `lesson-${Date.now()}`;
+  let articleId = id || id_konten;
+  const numId = Number(articleId);
+
+  try {
+    if (articleId && !Number.isNaN(numId)) {
+      await query(
+        `UPDATE konten_edukasi
+         SET judul_konten = $1, kategori_topik = $2, isi_materi = $3, media_url = $4, status_publikasi = $5
+         WHERE id_konten = $6`,
+        [articleTitle, articleTopic, articleBody, articleCover, status_publikasi, numId]
+      );
+    } else {
+      const insRes = await query(
+        `INSERT INTO konten_edukasi (judul_konten, kategori_topik, isi_materi, media_url, status_publikasi)
+         VALUES ($1, $2, $3, $4, $5)
+         RETURNING id_konten`,
+        [articleTitle, articleTopic, articleBody, articleCover, status_publikasi]
+      );
+      if (insRes && insRes.rows.length > 0) {
+        articleId = insRes.rows[0].id_konten;
+      }
+    }
+  } catch (err) {
+    console.warn('[Admin Edukasi DB Warning]:', err.message);
+  }
+
+  if (!articleId) {
+    articleId = `lesson-${Date.now()}`;
+  }
 
   dbStore.saveArticle({
     id: articleId,

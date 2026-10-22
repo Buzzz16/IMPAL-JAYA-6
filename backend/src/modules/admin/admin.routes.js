@@ -6,6 +6,7 @@ import {
   updateRekomendasiAdmin,
   getAntreanModerasi,
   updateStatusModerasi,
+  hapusPostModerasi,
   getDaftarEdukasiAdmin,
   simpanAtauUbahEdukasiAdmin,
   hapusEdukasiAdmin,
@@ -25,6 +26,7 @@ router.put('/rekomendasi/:id', optionalToken, updateRekomendasiAdmin);
 // UC-14: Moderasi Konten Komunitas
 router.get('/moderasi', optionalToken, getAntreanModerasi);
 router.patch('/moderasi/:id', optionalToken, updateStatusModerasi);
+router.delete('/moderasi/:id', optionalToken, hapusPostModerasi);
 
 // UC-15: Bagikan Dan Ubah Konten Edukasi
 router.get('/edukasi', optionalToken, getDaftarEdukasiAdmin);

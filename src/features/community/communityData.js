@@ -33,44 +33,4 @@ export function newReport(city = 'Samarinda') {
   };
 }
 
-export const initialReports = [
-  {
-    ...newReport('Samarinda'),
-    id: 'report-initial-1',
-    nomor_tiket: 'POL-2025-1041',
-    caption: 'Asap pembakaran sampah di sekitar Sungai Karang Mumus',
-    area: 'Sungai Karang Mumus',
-    latitude: -0.4948,
-    longitude: 117.1562,
-    condition: 'buruk',
-    source: 'Pembakaran sampah',
-    image:
-      'https://images.unsplash.com/photo-1555066657-4ea53882eaba?auto=format&fit=crop&w=1200&q=85',
-    likes: 128,
-    comments: [
-      {
-        name: 'peduliudara.smd',
-        text: 'Terima kasih sudah melaporkan. Tim komunitas akan ikut memantau area ini.',
-      },
-    ],
-  },
-  {
-    ...newReport('Samarinda'),
-    id: 'report-initial-2',
-    nomor_tiket: 'POL-2025-1042',
-    caption: 'Udara pagi di area taman terasa lebih segar',
-    area: 'Taman kota',
-    latitude: -0.5022,
-    longitude: 117.1536,
-    condition: 'bagus',
-    image:
-      'https://images.unsplash.com/photo-1527965408463-82ae0731825c?auto=format&fit=crop&w=1200&q=85',
-    likes: 94,
-    comments: [
-      {
-        name: 'hijaukankota',
-        text: 'Semoga ruang hijau kita terus bertambah.',
-      },
-    ],
-  },
-];
+export const initialReports = [];

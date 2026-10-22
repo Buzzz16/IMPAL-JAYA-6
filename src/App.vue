@@ -139,8 +139,15 @@ const liveStations = ref([]);
 const historyData = ref(null);
 const healthData = ref(null);
 const lessons = ref([...initialLessons]);
-const reports = ref([...initialReports]);
+
+const reports = ref([]);
 const loadingData = ref(false);
+const loadingFeed = ref(true);
+
+// Bersihkan cache lama agar tidak mengganggu
+try {
+  localStorage.removeItem('polusee_cached_reports');
+} catch {}
 
 // Live Device Location Tracking State
 const userDeviceLocation = ref(null); // { lat, lon, accuracy }
@@ -332,7 +339,7 @@ async function fetchGlobalData() {
 
     if (feedRes.status === 'fulfilled') {
       const feedItems = feedRes.value?.reports || feedRes.value?.feed_komunitas;
-      if (Array.isArray(feedItems) && feedItems.length > 0) {
+      if (Array.isArray(feedItems)) {
         reports.value = feedItems.map((r) => {
           const img =
             r.image ||
@@ -357,6 +364,8 @@ async function fetchGlobalData() {
     }
   } catch (err) {
     console.warn('[PoluSee Frontend] Gagal mengambil data global:', err.message);
+  } finally {
+    loadingFeed.value = false;
   }
 }
 
@@ -735,6 +744,7 @@ onBeforeUnmount(() => {
             v-else
             :reports="reports"
             :city="city"
+            :loading="loadingFeed"
             @create-report="
               createDraft = newReport(city);
               report = true;

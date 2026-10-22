@@ -84,27 +84,51 @@ function handleBackdropClick(event) {
   }
 }
 
-function handleImageChange(event) {
+function compressImage(file, maxWidth = 1000, quality = 0.72) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = reject;
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onerror = reject;
+      img.onload = () => {
+        let width = img.width;
+        let height = img.height;
+        if (width > maxWidth) {
+          height = Math.round((height * maxWidth) / width);
+          width = maxWidth;
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, width, height);
+        resolve(canvas.toDataURL('image/jpeg', quality));
+      };
+      img.src = String(e.target?.result || '');
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+async function handleImageChange(event) {
   const file = event.target.files?.[0];
   if (!file) return;
-  if (!['image/jpeg', 'image/png'].includes(file.type) || file.size > 10 * 1024 * 1024) {
-    error.value = 'Pilih JPG atau PNG, maksimal 10 MB.';
+  if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type) || file.size > 10 * 1024 * 1024) {
+    error.value = 'Pilih JPG, PNG, atau WebP, maksimal 10 MB.';
     return;
   }
   error.value = '';
   loading.value = true;
-  const reader = new FileReader();
-  reader.onload = () => {
-    const dataUri = String(reader.result);
-    draft.image = dataUri;
-    draft.photo = dataUri;
+  try {
+    const compressedUri = await compressImage(file, 1000, 0.72);
+    draft.image = compressedUri;
+    draft.photo = compressedUri;
+  } catch {
+    error.value = 'Gambar gagal diproses. Silakan coba kembali.';
+  } finally {
     loading.value = false;
-  };
-  reader.onerror = () => {
-    error.value = 'Gambar gagal dibaca. Silakan coba kembali.';
-    loading.value = false;
-  };
-  reader.readAsDataURL(file);
+  }
 }
 
 // [EXTERNAL API] Deteksi titik lokasi otomatis via HTML5 Geolocation + OpenStreetMap Nominatim API

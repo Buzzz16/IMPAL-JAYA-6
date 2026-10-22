@@ -17,10 +17,13 @@ export async function getDaftarEdukasi(_req, res) {
        ORDER BY published_at DESC`
     );
     if (result && result.rows.length > 0) {
+      console.log(
+        `\x1b[36m[DB Supabase]\x1b[0m 📥 GET /api/edukasi -> Berhasil query ${result.rows.length} materi edukasi.`
+      );
       return res.status(200).json({ list_konten: result.rows });
     }
-  } catch {
-    // Gunakan dbStore
+  } catch (err) {
+    console.error(`\x1b[31m[DB Supabase Error]\x1b[0m ❌ GET /api/edukasi:`, err.message);
   }
   return res.status(200).json({ list_konten: dbStore.getArticles() });
 }

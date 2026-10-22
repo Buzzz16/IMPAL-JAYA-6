@@ -9,6 +9,8 @@ import { query } from '../../config/db.js';
 
 function mapSupabaseRowToReport(row) {
   const photo = row.url_foto_bukti || row.media_lampiran || '';
+  const parsedLikes = typeof row.likes_count === 'number' ? row.likes_count : parseInt(row.likes_count || '0', 10);
+  const parsedComments = Array.isArray(row.comments) ? row.comments : [];
   return {
     id: `post-${row.id_post}`,
     id_post: row.id_post,
@@ -31,25 +33,60 @@ function mapSupabaseRowToReport(row) {
     url_foto_bukti: photo,
     lat: row.latitude ? Number(row.latitude) : -0.5022,
     lon: row.longitude ? Number(row.longitude) : 117.1536,
-    likes: 1,
-    comments: [],
+    likes: parsedLikes,
+    liked: Boolean(row.liked),
+    comments: parsedComments,
   };
 }
 
-// UC-08: Ambil Feed Komunitas langsung dari Supabase Database
-export async function getFeedKomunitas(_req, res) {
+// UC-08: Ambil Feed Komunitas langsung dari Supabase Database (termasuk Like & Komentar)
+export async function getFeedKomunitas(req, res) {
   try {
+    const currentUserId = req.user?.id_akun || null;
+    const currentClientId = req.headers['x-client-id'] || req.query.client_id || null;
+
     const result = await query(
       `SELECT p.*, l.id_laporan, l.nomor_tiket, l.kategori_polusi, l.deskripsi_kejadian,
               l.alamat_lokasi, l.latitude, l.longitude, l.url_foto_bukti, l.status_verifikasi,
               COALESCE(a.nama_lengkap, 'Pengguna PoluSee') as nama_lengkap,
-              u.foto_profil
+              u.foto_profil,
+              (SELECT COUNT(*)::int FROM like_post lp WHERE lp.id_post = p.id_post) AS likes_count,
+              (
+                SELECT CASE WHEN COUNT(*) > 0 THEN true ELSE false END
+                FROM like_post lp
+                WHERE lp.id_post = p.id_post
+                  AND (
+                    ($1::uuid IS NOT NULL AND lp.id_user = $1::uuid)
+                    OR ($2::text IS NOT NULL AND lp.client_id = $2::text)
+                  )
+              ) AS liked,
+              (
+                SELECT COALESCE(
+                  json_agg(
+                    json_build_object(
+                      'id', CONCAT('c-', kp.id_komentar),
+                      'id_komentar', kp.id_komentar,
+                      'name', COALESCE(kp.nama_pengguna, a_comm.nama_lengkap, 'Pengguna PoluSee'),
+                      'author', COALESCE(kp.nama_pengguna, a_comm.nama_lengkap, 'Pengguna PoluSee'),
+                      'text', kp.isi_komentar,
+                      'isi', kp.isi_komentar,
+                      'created_at', kp.created_at,
+                      'time', TO_CHAR(kp.created_at, 'DD/MM/YYYY HH24:MI')
+                    ) ORDER BY kp.created_at ASC
+                  ),
+                  '[]'::json
+                )
+                FROM komentar_post kp
+                LEFT JOIN akun a_comm ON kp.id_user = a_comm.id_akun
+                WHERE kp.id_post = p.id_post
+              ) AS comments
        FROM post_komunitas p
        LEFT JOIN laporan_polusi l ON p.id_post = l.id_post
        LEFT JOIN akun a ON p.id_user = a.id_akun
        LEFT JOIN users u ON p.id_user = u.id_akun
        WHERE p.status_moderasi = 'AKTIF'
-       ORDER BY p.created_at DESC`
+       ORDER BY p.created_at DESC`,
+      [currentUserId, currentClientId]
     );
     const count = result?.rows?.length || 0;
     console.log(
@@ -189,6 +226,9 @@ export async function createLaporanPolusi(req, res) {
         ...(laporRes.rows[0] || {}),
         nama_lengkap: req.user?.nama_lengkap || 'Pengguna PoluSee',
         foto_profil: req.user?.foto_profil || '',
+        likes_count: 0,
+        liked: false,
+        comments: [],
       };
       const mappedReport = mapSupabaseRowToReport(fullRow);
       console.log(`[Komunitas Supabase]: Laporan ${nomorTiket} berhasil disimpan ke database Supabase!`);
@@ -206,23 +246,61 @@ export async function createLaporanPolusi(req, res) {
   }
 }
 
-// UC-10: Melihat Detail Konten Komunitas dari Database
+// UC-10: Melihat Detail Konten Komunitas dari Database (termasuk Like & Komentar)
 export async function getDetailPostKomunitas(req, res) {
   try {
     const { id_post } = req.params;
     const cleanId = String(id_post).replace(/^post-/, '').replace(/^rep-/, '');
+    const currentUserId = req.user?.id_akun || null;
+    const currentClientId = req.headers['x-client-id'] || req.query.client_id || null;
+
     const result = await query(
       `SELECT p.*, l.id_laporan, l.nomor_tiket, l.kategori_polusi, l.deskripsi_kejadian,
               l.alamat_lokasi, l.latitude, l.longitude, l.url_foto_bukti, l.status_verifikasi,
               COALESCE(a.nama_lengkap, 'Pengguna PoluSee') as nama_lengkap,
-              u.foto_profil
+              u.foto_profil,
+              (SELECT COUNT(*)::int FROM like_post lp WHERE lp.id_post = p.id_post) AS likes_count,
+              (
+                SELECT CASE WHEN COUNT(*) > 0 THEN true ELSE false END
+                FROM like_post lp
+                WHERE lp.id_post = p.id_post
+                  AND (
+                    ($1::uuid IS NOT NULL AND lp.id_user = $1::uuid)
+                    OR ($2::text IS NOT NULL AND lp.client_id = $2::text)
+                  )
+              ) AS liked,
+              (
+                SELECT COALESCE(
+                  json_agg(
+                    json_build_object(
+                      'id', CONCAT('c-', kp.id_komentar),
+                      'id_komentar', kp.id_komentar,
+                      'name', COALESCE(kp.nama_pengguna, a_comm.nama_lengkap, 'Pengguna PoluSee'),
+                      'author', COALESCE(kp.nama_pengguna, a_comm.nama_lengkap, 'Pengguna PoluSee'),
+                      'text', kp.isi_komentar,
+                      'isi', kp.isi_komentar,
+                      'created_at', kp.created_at,
+                      'time', TO_CHAR(kp.created_at, 'DD/MM/YYYY HH24:MI')
+                    ) ORDER BY kp.created_at ASC
+                  ),
+                  '[]'::json
+                )
+                FROM komentar_post kp
+                LEFT JOIN akun a_comm ON kp.id_user = a_comm.id_akun
+                WHERE kp.id_post = p.id_post
+              ) AS comments
        FROM post_komunitas p
        LEFT JOIN laporan_polusi l ON p.id_post = l.id_post
        LEFT JOIN akun a ON p.id_user = a.id_akun
        LEFT JOIN users u ON p.id_user = u.id_akun
-       WHERE p.id_post = $1 OR l.nomor_tiket = $2
+       WHERE p.id_post = $3 OR l.nomor_tiket = $4
        LIMIT 1`,
-      [isNaN(Number(cleanId)) ? -1 : Number(cleanId), String(id_post)]
+      [
+        currentUserId,
+        currentClientId,
+        isNaN(Number(cleanId)) ? -1 : Number(cleanId),
+        String(id_post),
+      ]
     );
 
     if (result && result.rows.length > 0) {
@@ -234,20 +312,192 @@ export async function getDetailPostKomunitas(req, res) {
   }
 }
 
-// Tambah Komentar pada Post / Laporan
-export async function addCommentToPost(req, res) {
-  const { id_post } = req.params;
-  const { text } = req.body;
-  if (!text || !text.trim()) {
-    return res.status(400).json({ message: 'Komentar tidak boleh kosong.' });
+// Toggle Like pada Post Komunitas / Laporan ke Supabase
+export async function toggleLikePost(req, res) {
+  try {
+    const { id_post } = req.params;
+    const cleanId = String(id_post).replace(/^post-/, '').replace(/^rep-/, '');
+    const postId = Number(cleanId);
+
+    if (isNaN(postId)) {
+      return res.status(400).json({ message: 'ID post tidak valid.' });
+    }
+
+    const currentUserId = req.user?.id_akun || null;
+    const clientId = req.body?.client_id || req.headers['x-client-id'] || 'client-anonymous';
+
+    // Pastikan post ada
+    const postCheck = await query('SELECT id_post FROM post_komunitas WHERE id_post = $1', [postId]);
+    if (!postCheck || postCheck.rows.length === 0) {
+      return res.status(404).json({ message: 'Post tidak ditemukan.' });
+    }
+
+    let existingLike;
+    if (currentUserId) {
+      const userCheck = await query('SELECT id_akun FROM users WHERE id_akun = $1', [currentUserId]);
+      if (!userCheck || userCheck.rows.length === 0) {
+        await query(
+          'INSERT INTO users (id_akun, lokasi_default) VALUES ($1, $2) ON CONFLICT DO NOTHING',
+          [currentUserId, 'Samarinda']
+        );
+      }
+      existingLike = await query(
+        'SELECT id_like FROM like_post WHERE id_post = $1 AND id_user = $2',
+        [postId, currentUserId]
+      );
+    } else {
+      existingLike = await query(
+        'SELECT id_like FROM like_post WHERE id_post = $1 AND client_id = $2',
+        [postId, clientId]
+      );
+    }
+
+    let liked = false;
+    if (existingLike && existingLike.rows.length > 0) {
+      // BATALKAN SUKA (UNLIKE)
+      if (currentUserId) {
+        await query('DELETE FROM like_post WHERE id_post = $1 AND id_user = $2', [postId, currentUserId]);
+      } else {
+        await query('DELETE FROM like_post WHERE id_post = $1 AND client_id = $2', [postId, clientId]);
+      }
+      liked = false;
+    } else {
+      // SUKAI POST (LIKE)
+      if (currentUserId) {
+        await query(
+          'INSERT INTO like_post (id_post, id_user, client_id) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING',
+          [postId, currentUserId, clientId]
+        );
+      } else {
+        await query(
+          'INSERT INTO like_post (id_post, client_id) VALUES ($1, $2) ON CONFLICT DO NOTHING',
+          [postId, clientId]
+        );
+      }
+      liked = true;
+    }
+
+    // Ambil total likes terbaru dari Supabase
+    const countRes = await query(
+      'SELECT COUNT(*)::int as total FROM like_post WHERE id_post = $1',
+      [postId]
+    );
+    const totalLikes = countRes.rows[0]?.total || 0;
+
+    console.log(
+      `\x1b[35m[Supabase Like]\x1b[0m Post #${postId} ${liked ? 'disukai' : 'batal disukai'} (${totalLikes} suka).`
+    );
+
+    return res.status(200).json({
+      success: true,
+      liked,
+      likes: totalLikes,
+      id_post: postId,
+    });
+  } catch (err) {
+    console.error('[Supabase Like Error]:', err.message);
+    return res.status(500).json({
+      message: 'Gagal memperbarui status like di database Supabase.',
+      error: err.message,
+    });
   }
+}
 
-  const commentObj = {
-    id: `c-${Date.now()}`,
-    author: req.user?.nama_lengkap || 'Pengguna PoluSee',
-    text: text.trim(),
-    time: 'Baru saja',
-  };
+// Tambah Komentar pada Post Komunitas / Laporan ke Supabase
+export async function addCommentToPost(req, res) {
+  try {
+    const { id_post } = req.params;
+    const cleanId = String(id_post).replace(/^post-/, '').replace(/^rep-/, '');
+    const postId = Number(cleanId);
 
-  return res.status(201).json({ comment: commentObj });
+    if (isNaN(postId)) {
+      return res.status(400).json({ message: 'ID post tidak valid.' });
+    }
+
+    const { text, isi_komentar, name, author } = req.body;
+    const isi = (text || isi_komentar || '').trim();
+    if (!isi) {
+      return res.status(400).json({ message: 'Komentar tidak boleh kosong.' });
+    }
+
+    // Pastikan post ada
+    const postCheck = await query('SELECT id_post FROM post_komunitas WHERE id_post = $1', [postId]);
+    if (!postCheck || postCheck.rows.length === 0) {
+      return res.status(404).json({ message: 'Post tidak ditemukan.' });
+    }
+
+    let currentUserId = req.user?.id_akun || null;
+    let authorName = (name || author || req.user?.nama_lengkap || '').trim();
+
+    if (currentUserId) {
+      const userCheck = await query('SELECT id_akun FROM users WHERE id_akun = $1', [currentUserId]);
+      if (!userCheck || userCheck.rows.length === 0) {
+        await query(
+          'INSERT INTO users (id_akun, lokasi_default) VALUES ($1, $2) ON CONFLICT DO NOTHING',
+          [currentUserId, 'Samarinda']
+        );
+      }
+    }
+
+    if (!authorName) {
+      authorName = currentUserId ? 'Pengguna PoluSee' : 'Warga Peduli';
+    }
+
+    const insertRes = await query(
+      `INSERT INTO komentar_post (id_post, id_user, nama_pengguna, isi_komentar)
+       VALUES ($1, $2, $3, $4)
+       RETURNING *`,
+      [postId, currentUserId, authorName, isi]
+    );
+
+    const saved = insertRes.rows[0];
+    const commentObj = {
+      id: `c-${saved.id_komentar}`,
+      id_komentar: saved.id_komentar,
+      name: saved.nama_pengguna || authorName,
+      author: saved.nama_pengguna || authorName,
+      text: saved.isi_komentar,
+      isi: saved.isi_komentar,
+      created_at: saved.created_at,
+      time: 'Baru saja',
+    };
+
+    console.log(
+      `\x1b[32m[Supabase Comment]\x1b[0m Komentar baru disimpan ke Supabase pada post #${postId} oleh "${commentObj.name}": "${commentObj.text}"`
+    );
+
+    // Ambil seluruh komentar post ini dari Supabase
+    const allCommentsRes = await query(
+      `SELECT kp.*, COALESCE(kp.nama_pengguna, a.nama_lengkap, 'Pengguna PoluSee') as display_author
+       FROM komentar_post kp
+       LEFT JOIN akun a ON kp.id_user = a.id_akun
+       WHERE kp.id_post = $1
+       ORDER BY kp.created_at ASC`,
+      [postId]
+    );
+
+    const allComments = (allCommentsRes.rows || []).map((row) => ({
+      id: `c-${row.id_komentar}`,
+      id_komentar: row.id_komentar,
+      name: row.display_author || row.nama_pengguna || 'Pengguna PoluSee',
+      author: row.display_author || row.nama_pengguna || 'Pengguna PoluSee',
+      text: row.isi_komentar,
+      isi: row.isi_komentar,
+      created_at: row.created_at,
+      time: new Date(row.created_at).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
+    }));
+
+    return res.status(201).json({
+      success: true,
+      comment: commentObj,
+      comments: allComments,
+      total_comments: allComments.length,
+    });
+  } catch (err) {
+    console.error('[Supabase Comment Error]:', err.message);
+    return res.status(500).json({
+      message: 'Gagal menambahkan komentar ke database Supabase.',
+      error: err.message,
+    });
+  }
 }

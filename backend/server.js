@@ -95,9 +95,11 @@ app.use('/api/rekomendasi', rekomendasiRoutes);
 app.use('/api/edukasi', edukasiRoutes);
 app.use('/api/komunitas', komunitasRoutes);
 app.use('/api/profile', profilRoutes);
+app.use('/api/admin', adminRoutes);
+
 // SPA Fallback: Arahkan seluruh rute browser (non-API) langsung ke frontend Vue (index.html)
-app.get('*', (req, res, next) => {
-  if (req.path.startsWith('/api')) {
+app.use((req, res, next) => {
+  if (req.method !== 'GET' || req.path.startsWith('/api')) {
     return next();
   }
   const indexPath = path.join(distPath, 'index.html');

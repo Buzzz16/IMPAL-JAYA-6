@@ -9,7 +9,8 @@
  */
 import { ref, reactive, onMounted, onBeforeUnmount } from 'vue';
 import { detectUserLocationViaOpenStreetMap } from '../../services/osmMapService';
-import { apiRequest } from '../../services/apiClient';
+import { apiRequest, togglePostLikeApi, addPostCommentApi } from '../../services/apiClient';
+import { userProfileStore } from '../auth/authStore';
 import AppIcon from '../../components/common/AppIcon.vue';
 
 const props = defineProps({
@@ -158,26 +159,61 @@ async function handleSaveReport() {
   }
 }
 
-function handleToggleLike() {
+async function handleToggleLike() {
+  const currentLiked = props.report.liked;
+  const currentLikes = props.report.likes || 0;
   const updated = {
     ...props.report,
-    liked: !props.report.liked,
-    likes: (props.report.likes || 0) + (props.report.liked ? -1 : 1),
+    liked: !currentLiked,
+    likes: currentLikes + (currentLiked ? -1 : 1),
   };
   emit('save', updated);
+
+  try {
+    const res = await togglePostLikeApi(props.report.id_post || props.report.id);
+    if (res && res.success) {
+      emit('save', {
+        ...props.report,
+        liked: res.liked,
+        likes: res.likes,
+      });
+    }
+  } catch (err) {
+    console.warn('Gagal sinkron like ke database Supabase:', err);
+  }
 }
 
-function handleAddComment() {
+async function handleAddComment() {
   if (!comment.value.trim()) return;
+  const newText = comment.value.trim();
+  const authorName = userProfileStore.nama_lengkap || userProfileStore.username || 'adityanugraha';
+
+  const optimisticComment = {
+    id: `temp-${Date.now()}`,
+    name: authorName,
+    author: authorName,
+    text: newText,
+    time: 'Baru saja',
+  };
+
   const updated = {
     ...props.report,
-    comments: [
-      ...(props.report.comments || []),
-      { name: 'adityanugraha', text: comment.value.trim() },
-    ],
+    comments: [...(props.report.comments || []), optimisticComment],
   };
   emit('save', updated);
   comment.value = '';
+
+  try {
+    const res = await addPostCommentApi(props.report.id_post || props.report.id, newText, authorName);
+    if (res && res.comments) {
+      emit('save', {
+        ...props.report,
+        comments: res.comments,
+      });
+    }
+  } catch (err) {
+    console.warn('Gagal sinkron komentar ke database Supabase:', err);
+  }
 }
 
 const conditionMap = {

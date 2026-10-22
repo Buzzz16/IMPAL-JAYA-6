@@ -34,7 +34,7 @@ import {
   getHistoryAqiData,
   getHealthRecommendationData,
 } from './services/aqiService';
-import { apiRequest } from './services/apiClient';
+import { apiRequest, togglePostLikeApi } from './services/apiClient';
 import { logoutAccount, userProfileStore } from './features/auth/authStore';
 
 // ============================================================================
@@ -398,6 +398,25 @@ function saveReport(updated) {
   reports.value = reports.value.map((item) =>
     item.id === updated.id ? updated : item
   );
+  if (selectedReport.value && selectedReport.value.id === updated.id) {
+    selectedReport.value = updated;
+  }
+}
+
+async function handleToggleLike(updated) {
+  saveReport(updated);
+  try {
+    const res = await togglePostLikeApi(updated.id_post || updated.id);
+    if (res && res.success) {
+      saveReport({
+        ...updated,
+        liked: res.liked,
+        likes: res.likes,
+      });
+    }
+  } catch (err) {
+    console.warn('Gagal sinkron like ke Supabase:', err);
+  }
 }
 
 function handleCreateReportSaved(created) {
@@ -750,7 +769,7 @@ onBeforeUnmount(() => {
               report = true;
             "
             @select-report="selectedReport = $event"
-            @toggle-like="saveReport"
+            @toggle-like="handleToggleLike"
           />
         </template>
 

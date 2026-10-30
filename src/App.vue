@@ -106,13 +106,15 @@ function getRoutePath() {
   return '/';
 }
 
+let _suppressHistoryPush = false;
+
 function syncUrlWithState(replace = false) {
   if (typeof window === 'undefined') return;
   const targetPath = getRoutePath();
   const currentPath = window.location.pathname;
 
   if (currentPath !== targetPath) {
-    if (replace) {
+    if (replace || _suppressHistoryPush) {
       window.history.replaceState({ page: page.value, authPage: authPage.value, admin: admin.value }, '', targetPath);
     } else {
       window.history.pushState({ page: page.value, authPage: authPage.value, admin: admin.value }, '', targetPath);
@@ -133,22 +135,29 @@ watch([page, admin, authPage], () => {
 });
 
 function handlePopState() {
-  // Jika pengguna belum/sudah logout, tolak navigasi kembali ke halaman dalam
+  // AUTH GUARD: Jika sudah logout, blokir navigasi back/forward ke halaman dalam
   if (!isAuthenticated()) {
-    const current = parseCurrentUrl();
-    if (current.authPage) {
-      authPage.value = current.authPage;
-      admin.value = false;
-      page.value = 'home';
-      return;
-    }
-    // Kunci riwayat agar tidak bisa di-undo/back ke halaman dashboard
-    authPage.value = 'login';
+    _suppressHistoryPush = true;
     admin.value = false;
     page.value = 'home';
-    if (typeof window !== 'undefined' && window.history) {
-      window.history.pushState({ page: 'home', authPage: 'login', admin: false }, '', '/login');
+
+    const current = parseCurrentUrl();
+    if (current.authPage === 'register' || current.authPage === 'forgot') {
+      authPage.value = current.authPage;
+    } else {
+      authPage.value = 'login';
     }
+
+    // Timpa riwayat browser saat ini agar back tidak bisa kembali ke halaman sebelumnya
+    if (typeof window !== 'undefined' && window.history) {
+      window.history.replaceState(
+        { page: 'home', authPage: authPage.value, admin: false },
+        '',
+        getRoutePath()
+      );
+    }
+
+    _suppressHistoryPush = false;
     return;
   }
 
@@ -506,18 +515,29 @@ function handleLogout() {
   article.value = null;
   report.value = false;
   selectedReport.value = null;
-  admin.value = false;
-  page.value = 'home';
-  authPage.value = 'login';
 
   try {
     sessionStorage.removeItem('polusee_active_route');
   } catch {}
 
-  // Cegah undo / backspace browser kembali ke halaman sebelumnya setelah logout
+  // Suppress pushState dari watcher saat mengubah state logout
+  _suppressHistoryPush = true;
+  admin.value = false;
+  page.value = 'home';
+  authPage.value = 'login';
+  _suppressHistoryPush = false;
+
+  // Hapus seluruh riwayat navigasi lama dan ganti dengan /login
+  // sehingga tombol Back browser tidak bisa kembali ke halaman dashboard
   if (typeof window !== 'undefined' && window.history) {
-    window.history.replaceState({ page: 'home', authPage: 'login', admin: false }, '', '/login');
-    window.history.pushState({ page: 'home', authPage: 'login', admin: false }, '', '/login');
+    const loginState = { page: 'home', authPage: 'login', admin: false };
+    window.history.replaceState(loginState, '', '/login');
+
+    // Tambahkan penanganan 'go' untuk menggantikan entry lama di stack
+    const depth = window.history.length;
+    for (let i = 0; i < depth; i++) {
+      window.history.pushState(loginState, '', '/login');
+    }
   }
 }
 

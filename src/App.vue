@@ -140,14 +140,29 @@ const historyData = ref(null);
 const healthData = ref(null);
 const lessons = ref([...initialLessons]);
 
-const reports = ref([]);
-const loadingData = ref(false);
-const loadingFeed = ref(true);
+const REPORTS_CACHE_KEY = 'polusee_cached_reports';
 
-// Bersihkan cache lama agar tidak mengganggu
-try {
-  localStorage.removeItem('polusee_cached_reports');
-} catch {}
+function getCachedReports() {
+  try {
+    const raw = localStorage.getItem(REPORTS_CACHE_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveCachedReports(items) {
+  try {
+    if (Array.isArray(items) && items.length > 0) {
+      localStorage.setItem(REPORTS_CACHE_KEY, JSON.stringify(items));
+    }
+  } catch {}
+}
+
+const initialCachedReports = getCachedReports();
+const reports = ref(initialCachedReports);
+const loadingData = ref(false);
+const loadingFeed = ref(initialCachedReports.length === 0);
 
 // Live Device Location Tracking State
 const userDeviceLocation = ref(null); // { lat, lon, accuracy }
@@ -356,6 +371,7 @@ async function fetchGlobalData() {
               'https://images.unsplash.com/photo-1630678334641-0c5339dfd1a7?auto=format&fit=crop&w=500&q=85',
           };
         });
+        saveCachedReports(reports.value);
       }
     }
 
@@ -435,6 +451,7 @@ function handleCreateReportSaved(created) {
       'https://images.unsplash.com/photo-1630678334641-0c5339dfd1a7?auto=format&fit=crop&w=500&q=85',
   };
   reports.value = [norm, ...reports.value];
+  saveCachedReports(reports.value);
 }
 
 function handleDeleteActiveReport() {
@@ -445,6 +462,7 @@ function handleDeleteActiveReport() {
 
 function handleDeleteReportById(id) {
   reports.value = reports.value.filter((item) => item.id !== id);
+  saveCachedReports(reports.value);
 }
 
 function handleLogout() {

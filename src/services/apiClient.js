@@ -14,9 +14,10 @@ const CLIENT_STORAGE_KEY = 'polusee_client_id';
 
 export function getOrCreateClientId() {
   try {
-    let cid = localStorage.getItem(CLIENT_STORAGE_KEY);
+    let cid = sessionStorage.getItem(CLIENT_STORAGE_KEY) || localStorage.getItem(CLIENT_STORAGE_KEY);
     if (!cid) {
       cid = 'client-' + Math.random().toString(36).substring(2, 12) + '-' + Date.now();
+      sessionStorage.setItem(CLIENT_STORAGE_KEY, cid);
       localStorage.setItem(CLIENT_STORAGE_KEY, cid);
     }
     return cid;
@@ -27,16 +28,41 @@ export function getOrCreateClientId() {
 
 export function getStoredToken() {
   try {
-    return localStorage.getItem(TOKEN_STORAGE_KEY) || '';
+    return sessionStorage.getItem(TOKEN_STORAGE_KEY) || localStorage.getItem(TOKEN_STORAGE_KEY) || '';
   } catch {
     return '';
   }
 }
 
+export function getStoredUser() {
+  try {
+    const raw = sessionStorage.getItem(USER_STORAGE_KEY) || localStorage.getItem(USER_STORAGE_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+export function saveStoredUser(user) {
+  if (!user) return;
+  try {
+    const serialized = JSON.stringify(user);
+    sessionStorage.setItem(USER_STORAGE_KEY, serialized);
+    localStorage.setItem(USER_STORAGE_KEY, serialized);
+  } catch {
+    // Ignore storage errors in restricted environments
+  }
+}
+
 export function setStoredSession(token, user) {
   try {
-    if (token) localStorage.setItem(TOKEN_STORAGE_KEY, token);
-    if (user) localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(user));
+    if (token) {
+      sessionStorage.setItem(TOKEN_STORAGE_KEY, token);
+      localStorage.setItem(TOKEN_STORAGE_KEY, token);
+    }
+    if (user) {
+      saveStoredUser(user);
+    }
   } catch {
     // Ignore storage errors in restricted environments
   }
@@ -44,6 +70,8 @@ export function setStoredSession(token, user) {
 
 export function clearStoredSession() {
   try {
+    sessionStorage.removeItem(TOKEN_STORAGE_KEY);
+    sessionStorage.removeItem(USER_STORAGE_KEY);
     localStorage.removeItem(TOKEN_STORAGE_KEY);
     localStorage.removeItem(USER_STORAGE_KEY);
   } catch {

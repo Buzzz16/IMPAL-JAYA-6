@@ -34,7 +34,7 @@ import {
   getHistoryAqiData,
   getHealthRecommendationData,
 } from './services/aqiService';
-import { apiRequest, togglePostLikeApi } from './services/apiClient';
+import { apiRequest, togglePostLikeApi, saveStoredUser } from './services/apiClient';
 import { logoutAccount, userProfileStore } from './features/auth/authStore';
 
 // ============================================================================
@@ -361,6 +361,7 @@ async function fetchGlobalData() {
 
     if (profRes.status === 'fulfilled' && profRes.value?.profil_user) {
       Object.assign(userProfileStore, profRes.value.profil_user);
+      saveStoredUser(userProfileStore);
     }
   } catch (err) {
     console.warn('[PoluSee Frontend] Gagal mengambil data global:', err.message);
@@ -565,8 +566,8 @@ onBeforeUnmount(() => {
           </div>
           <div class="flex items-center gap-2 pl-2 border-l border-[#aeb9ae]/50">
             <div class="hidden sm:flex flex-col text-right">
-              <span class="text-xs font-semibold text-[#285765] leading-tight">{{ userProfileStore.nama_lengkap }}</span>
-              <span class="text-[10px] text-[#71827a] leading-none">{{ userProfileStore.email }} · <span class="rounded bg-[#edce7e]/60 px-1 font-bold text-[#285765]">{{ userProfileStore.role || 'USER' }}</span></span>
+              <span class="text-xs font-semibold text-[#285765] leading-tight">{{ userProfileStore.nama_lengkap || 'Pengguna' }}</span>
+              <span class="text-[10px] text-[#71827a] leading-none">{{ userProfileStore.email || 'user@polusee.id' }} · <span class="rounded bg-[#edce7e]/60 px-1 font-bold text-[#285765]">{{ userProfileStore.role || 'USER' }}</span></span>
             </div>
             <button
               class="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-[#aeb9ae] bg-white text-[#285765] text-xs font-medium hover:border-[#285765] hover:bg-[#285765] hover:text-white transition cursor-pointer shadow-2xs"

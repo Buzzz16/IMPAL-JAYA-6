@@ -6,7 +6,7 @@
  * Menjamin semua foto profil & foto laporan ter-render dengan sempurna
  * ============================================================================
  */
-import { ref } from 'vue';
+import { ref, watch } from 'vue';
 import AppIcon from '../../components/common/AppIcon.vue';
 import { initialReports } from '../community/communityData';
 import { userProfileStore, updateProfileData } from '../auth/authStore';
@@ -30,11 +30,27 @@ const defaultReportPhoto =
   'https://images.unsplash.com/photo-1555066657-4ea53882eaba?auto=format&fit=crop&w=1200&q=85';
 
 const editMode = ref(false);
-const nameVal = ref(userProfileStore.nama_lengkap);
-const ageVal = ref(userProfileStore.umur);
-const groupVal = ref(userProfileStore.kategori_rentan);
-const alertVal = ref(userProfileStore.peringatan_aqi_100);
+const nameVal = ref(userProfileStore.nama_lengkap || '');
+const ageVal = ref(userProfileStore.umur || 28);
+const groupVal = ref(userProfileStore.kategori_rentan || 'Umum');
+const alertVal = ref(userProfileStore.peringatan_aqi_100 ?? true);
 const avatarUrl = ref(userProfileStore.foto_profil || defaultAvatar);
+
+watch(() => userProfileStore.nama_lengkap, (val) => {
+  if (!editMode.value && val) nameVal.value = val;
+});
+watch(() => userProfileStore.umur, (val) => {
+  if (!editMode.value && val != null) ageVal.value = val;
+});
+watch(() => userProfileStore.kategori_rentan, (val) => {
+  if (!editMode.value && val) groupVal.value = val;
+});
+watch(() => userProfileStore.peringatan_aqi_100, (val) => {
+  if (!editMode.value && val != null) alertVal.value = val;
+});
+watch(() => userProfileStore.foto_profil, (val) => {
+  if (!editMode.value && val) avatarUrl.value = val;
+});
 
 function isNewReport(id) {
   return !initialReports.some((r) => r.id === id);
@@ -53,7 +69,7 @@ function handleAvatarChange(event) {
 
 async function handleSavePreferences() {
   await updateProfileData({
-    nama_lengkap: nameVal.value.trim() || 'Aditya Nugraha',
+    nama_lengkap: nameVal.value.trim() || userProfileStore.nama_lengkap || 'Pengguna',
     umur: Number(ageVal.value) || 28,
     kategori_rentan: groupVal.value,
     peringatan_aqi_100: alertVal.value,
@@ -78,15 +94,15 @@ async function handleSavePreferences() {
         <img
           class="mx-auto aspect-square w-28 rounded-full border-4 border-[#f8f8f1] object-cover shadow-[0_0_0_1px_#9ba99d] sm:w-32"
           :src="userProfileStore.foto_profil || defaultAvatar"
-          :alt="`Foto profil ${userProfileStore.nama_lengkap}`"
+          :alt="`Foto profil ${userProfileStore.nama_lengkap || 'Pengguna'}`"
           @error="$event.target.src = defaultAvatar"
         />
         <div class="text-center sm:text-left">
           <div class="flex flex-col items-center gap-4 sm:flex-row">
             <div>
-              <h2 class="!m-0 !text-[24px]">{{ userProfileStore.nama_lengkap }}</h2>
+              <h2 class="!m-0 !text-[24px]">{{ userProfileStore.nama_lengkap || 'Pengguna' }}</h2>
               <span class="mt-1 block text-[length:var(--text-label)] text-[#7d8580]">
-                {{ userProfileStore.username }} · {{ userProfileStore.lokasi_default }}
+                {{ userProfileStore.username || '@pengguna' }} · {{ userProfileStore.lokasi_default || 'Samarinda' }}
               </span>
             </div>
             <div class="sm:ml-auto">

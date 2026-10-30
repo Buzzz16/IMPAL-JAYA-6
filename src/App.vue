@@ -34,7 +34,7 @@ import {
   getHistoryAqiData,
   getHealthRecommendationData,
 } from './services/aqiService';
-import { apiRequest, togglePostLikeApi, saveStoredUser } from './services/apiClient';
+import { apiRequest, togglePostLikeApi, saveStoredUser, getStoredToken, getStoredUser } from './services/apiClient';
 import { logoutAccount, userProfileStore } from './features/auth/authStore';
 
 // ============================================================================
@@ -42,14 +42,30 @@ import { logoutAccount, userProfileStore } from './features/auth/authStore';
 // Setiap halaman memiliki Path/URL mandiri (/map, /community, /profile, dll.)
 // dan TIDAK LAGI me-reset ke menu utama saat di-refresh (F5) atau auto-reload.
 // ============================================================================
+function isAuthenticated() {
+  if (typeof window === 'undefined') return false;
+  try {
+    return Boolean(getStoredToken() || getStoredUser());
+  } catch {
+    return false;
+  }
+}
+
 function parseCurrentUrl() {
   if (typeof window === 'undefined') return { page: 'home', authPage: null, admin: false };
   const path = window.location.pathname.toLowerCase().replace(/\/$/, '') || '/';
 
-  if (path.startsWith('/admin')) return { page: 'home', authPage: null, admin: true };
+  // Rute Auth Publik yang selalu terbuka tanpa login
   if (path === '/login') return { page: 'home', authPage: 'login', admin: false };
   if (path === '/register') return { page: 'home', authPage: 'register', admin: false };
   if (path === '/forgot-password' || path === '/forgot') return { page: 'home', authPage: 'forgot', admin: false };
+
+  // AUTH GUARD: Jika belum login atau sudah logout, wajib arahkan ke /login
+  if (!isAuthenticated()) {
+    return { page: 'home', authPage: 'login', admin: false };
+  }
+
+  if (path.startsWith('/admin')) return { page: 'home', authPage: null, admin: true };
   if (path === '/map' || path === '/peta') return { page: 'map-detail', authPage: null, admin: false };
   if (path === '/air-detail' || path === '/detail' || path === '/udara') return { page: 'air-detail', authPage: null, admin: false };
   if (path === '/history' || path === '/riwayat') return { page: 'history-detail', authPage: null, admin: false };
@@ -117,6 +133,25 @@ watch([page, admin, authPage], () => {
 });
 
 function handlePopState() {
+  // Jika pengguna belum/sudah logout, tolak navigasi kembali ke halaman dalam
+  if (!isAuthenticated()) {
+    const current = parseCurrentUrl();
+    if (current.authPage) {
+      authPage.value = current.authPage;
+      admin.value = false;
+      page.value = 'home';
+      return;
+    }
+    // Kunci riwayat agar tidak bisa di-undo/back ke halaman dashboard
+    authPage.value = 'login';
+    admin.value = false;
+    page.value = 'home';
+    if (typeof window !== 'undefined' && window.history) {
+      window.history.pushState({ page: 'home', authPage: 'login', admin: false }, '', '/login');
+    }
+    return;
+  }
+
   const current = parseCurrentUrl();
   page.value = current.page;
   admin.value = current.admin;
@@ -471,7 +506,19 @@ function handleLogout() {
   article.value = null;
   report.value = false;
   selectedReport.value = null;
+  admin.value = false;
+  page.value = 'home';
   authPage.value = 'login';
+
+  try {
+    sessionStorage.removeItem('polusee_active_route');
+  } catch {}
+
+  // Cegah undo / backspace browser kembali ke halaman sebelumnya setelah logout
+  if (typeof window !== 'undefined' && window.history) {
+    window.history.replaceState({ page: 'home', authPage: 'login', admin: false }, '', '/login');
+    window.history.pushState({ page: 'home', authPage: 'login', admin: false }, '', '/login');
+  }
 }
 
 function goHome() {

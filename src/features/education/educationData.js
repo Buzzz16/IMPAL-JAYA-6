@@ -108,9 +108,9 @@ export const initialLessonReviews = {
     {
       id_ulasan: 'rev-1',
       id_konten: 'lesson-0',
-      author: 'Aditya Nugraha',
-      handle: '@adityanugraha',
-      isOwner: true,
+      author: 'Warga Peduli',
+      handle: '@wargapeduli',
+      isOwner: false,
       rating: 5,
       isi_ulasan: 'Penjelasan rentang angka AQI sangat mudah dipahami untuk memantau udara harian di Samarinda.',
       is_edited: false,

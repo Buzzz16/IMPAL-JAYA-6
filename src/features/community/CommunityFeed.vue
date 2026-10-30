@@ -10,6 +10,7 @@
  */
 import { ref, computed } from 'vue';
 import AppIcon from '../../components/common/AppIcon.vue';
+import { userProfileStore } from '../auth/authStore';
 
 const props = defineProps({
   reports: {
@@ -187,11 +188,11 @@ const displayReports = computed(() => {
             class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-[var(--line)] bg-[var(--blue)] text-xs font-bold text-[var(--paper)]"
             aria-hidden="true"
           >
-            {{ getInitials(entry.author || 'Aditya Nugraha') }}
+            {{ getInitials(entry.author || userProfileStore.nama_lengkap || 'Pengguna') }}
           </div>
           <div class="flex min-w-0 flex-1 flex-wrap items-baseline gap-x-2 gap-y-0.5">
-            <strong class="text-sm font-bold text-[var(--ink)]">{{ entry.author || 'Aditya Nugraha' }}</strong>
-            <span class="text-xs text-[var(--muted)]">{{ entry.user || '@adityanugraha' }}</span>
+            <strong class="text-sm font-bold text-[var(--ink)]">{{ entry.author || userProfileStore.nama_lengkap || 'Pengguna' }}</strong>
+            <span class="text-xs text-[var(--muted)]">{{ entry.user || userProfileStore.username || '@pengguna' }}</span>
             <span class="text-xs text-[var(--muted)]">· {{ entry.time || 'Hari ini' }}</span>
           </div>
           <span

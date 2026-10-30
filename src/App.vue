@@ -34,7 +34,7 @@ import {
   getHistoryAqiData,
   getHealthRecommendationData,
 } from './services/aqiService';
-import { apiRequest, togglePostLikeApi } from './services/apiClient';
+import { apiRequest, togglePostLikeApi, saveStoredUser, getStoredToken, getStoredUser } from './services/apiClient';
 import { logoutAccount, userProfileStore } from './features/auth/authStore';
 
 // ============================================================================
@@ -42,14 +42,30 @@ import { logoutAccount, userProfileStore } from './features/auth/authStore';
 // Setiap halaman memiliki Path/URL mandiri (/map, /community, /profile, dll.)
 // dan TIDAK LAGI me-reset ke menu utama saat di-refresh (F5) atau auto-reload.
 // ============================================================================
+function isAuthenticated() {
+  if (typeof window === 'undefined') return false;
+  try {
+    return Boolean(getStoredToken() || getStoredUser());
+  } catch {
+    return false;
+  }
+}
+
 function parseCurrentUrl() {
   if (typeof window === 'undefined') return { page: 'home', authPage: null, admin: false };
   const path = window.location.pathname.toLowerCase().replace(/\/$/, '') || '/';
 
-  if (path.startsWith('/admin')) return { page: 'home', authPage: null, admin: true };
+  // Rute Auth Publik yang selalu terbuka tanpa login
   if (path === '/login') return { page: 'home', authPage: 'login', admin: false };
   if (path === '/register') return { page: 'home', authPage: 'register', admin: false };
   if (path === '/forgot-password' || path === '/forgot') return { page: 'home', authPage: 'forgot', admin: false };
+
+  // AUTH GUARD: Jika belum login atau sudah logout, wajib arahkan ke /login
+  if (!isAuthenticated()) {
+    return { page: 'home', authPage: 'login', admin: false };
+  }
+
+  if (path.startsWith('/admin')) return { page: 'home', authPage: null, admin: true };
   if (path === '/map' || path === '/peta') return { page: 'map-detail', authPage: null, admin: false };
   if (path === '/air-detail' || path === '/detail' || path === '/udara') return { page: 'air-detail', authPage: null, admin: false };
   if (path === '/history' || path === '/riwayat') return { page: 'history-detail', authPage: null, admin: false };
@@ -90,13 +106,15 @@ function getRoutePath() {
   return '/';
 }
 
+let _suppressHistoryPush = false;
+
 function syncUrlWithState(replace = false) {
   if (typeof window === 'undefined') return;
   const targetPath = getRoutePath();
   const currentPath = window.location.pathname;
 
   if (currentPath !== targetPath) {
-    if (replace) {
+    if (replace || _suppressHistoryPush) {
       window.history.replaceState({ page: page.value, authPage: authPage.value, admin: admin.value }, '', targetPath);
     } else {
       window.history.pushState({ page: page.value, authPage: authPage.value, admin: admin.value }, '', targetPath);
@@ -117,6 +135,32 @@ watch([page, admin, authPage], () => {
 });
 
 function handlePopState() {
+  // AUTH GUARD: Jika sudah logout, blokir navigasi back/forward ke halaman dalam
+  if (!isAuthenticated()) {
+    _suppressHistoryPush = true;
+    admin.value = false;
+    page.value = 'home';
+
+    const current = parseCurrentUrl();
+    if (current.authPage === 'register' || current.authPage === 'forgot') {
+      authPage.value = current.authPage;
+    } else {
+      authPage.value = 'login';
+    }
+
+    // Timpa riwayat browser saat ini agar back tidak bisa kembali ke halaman sebelumnya
+    if (typeof window !== 'undefined' && window.history) {
+      window.history.replaceState(
+        { page: 'home', authPage: authPage.value, admin: false },
+        '',
+        getRoutePath()
+      );
+    }
+
+    _suppressHistoryPush = false;
+    return;
+  }
+
   const current = parseCurrentUrl();
   page.value = current.page;
   admin.value = current.admin;
@@ -140,14 +184,29 @@ const historyData = ref(null);
 const healthData = ref(null);
 const lessons = ref([...initialLessons]);
 
-const reports = ref([]);
-const loadingData = ref(false);
-const loadingFeed = ref(true);
+const REPORTS_CACHE_KEY = 'polusee_cached_reports';
 
-// Bersihkan cache lama agar tidak mengganggu
-try {
-  localStorage.removeItem('polusee_cached_reports');
-} catch {}
+function getCachedReports() {
+  try {
+    const raw = localStorage.getItem(REPORTS_CACHE_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveCachedReports(items) {
+  try {
+    if (Array.isArray(items) && items.length > 0) {
+      localStorage.setItem(REPORTS_CACHE_KEY, JSON.stringify(items));
+    }
+  } catch {}
+}
+
+const initialCachedReports = getCachedReports();
+const reports = ref(initialCachedReports);
+const loadingData = ref(false);
+const loadingFeed = ref(initialCachedReports.length === 0);
 
 // Live Device Location Tracking State
 const userDeviceLocation = ref(null); // { lat, lon, accuracy }
@@ -356,11 +415,13 @@ async function fetchGlobalData() {
               'https://images.unsplash.com/photo-1630678334641-0c5339dfd1a7?auto=format&fit=crop&w=500&q=85',
           };
         });
+        saveCachedReports(reports.value);
       }
     }
 
     if (profRes.status === 'fulfilled' && profRes.value?.profil_user) {
       Object.assign(userProfileStore, profRes.value.profil_user);
+      saveStoredUser(userProfileStore);
     }
   } catch (err) {
     console.warn('[PoluSee Frontend] Gagal mengambil data global:', err.message);
@@ -434,6 +495,7 @@ function handleCreateReportSaved(created) {
       'https://images.unsplash.com/photo-1630678334641-0c5339dfd1a7?auto=format&fit=crop&w=500&q=85',
   };
   reports.value = [norm, ...reports.value];
+  saveCachedReports(reports.value);
 }
 
 function handleDeleteActiveReport() {
@@ -444,6 +506,7 @@ function handleDeleteActiveReport() {
 
 function handleDeleteReportById(id) {
   reports.value = reports.value.filter((item) => item.id !== id);
+  saveCachedReports(reports.value);
 }
 
 function handleLogout() {
@@ -452,7 +515,30 @@ function handleLogout() {
   article.value = null;
   report.value = false;
   selectedReport.value = null;
+
+  try {
+    sessionStorage.removeItem('polusee_active_route');
+  } catch {}
+
+  // Suppress pushState dari watcher saat mengubah state logout
+  _suppressHistoryPush = true;
+  admin.value = false;
+  page.value = 'home';
   authPage.value = 'login';
+  _suppressHistoryPush = false;
+
+  // Hapus seluruh riwayat navigasi lama dan ganti dengan /login
+  // sehingga tombol Back browser tidak bisa kembali ke halaman dashboard
+  if (typeof window !== 'undefined' && window.history) {
+    const loginState = { page: 'home', authPage: 'login', admin: false };
+    window.history.replaceState(loginState, '', '/login');
+
+    // Tambahkan penanganan 'go' untuk menggantikan entry lama di stack
+    const depth = window.history.length;
+    for (let i = 0; i < depth; i++) {
+      window.history.pushState(loginState, '', '/login');
+    }
+  }
 }
 
 function goHome() {
@@ -565,8 +651,8 @@ onBeforeUnmount(() => {
           </div>
           <div class="flex items-center gap-2 pl-2 border-l border-[#aeb9ae]/50">
             <div class="hidden sm:flex flex-col text-right">
-              <span class="text-xs font-semibold text-[#285765] leading-tight">{{ userProfileStore.nama_lengkap }}</span>
-              <span class="text-[10px] text-[#71827a] leading-none">{{ userProfileStore.email }} · <span class="rounded bg-[#edce7e]/60 px-1 font-bold text-[#285765]">{{ userProfileStore.role || 'USER' }}</span></span>
+              <span class="text-xs font-semibold text-[#285765] leading-tight">{{ userProfileStore.nama_lengkap || 'Pengguna' }}</span>
+              <span class="text-[10px] text-[#71827a] leading-none">{{ userProfileStore.email || 'user@polusee.id' }} · <span class="rounded bg-[#edce7e]/60 px-1 font-bold text-[#285765]">{{ userProfileStore.role || 'USER' }}</span></span>
             </div>
             <button
               class="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-[#aeb9ae] bg-white text-[#285765] text-xs font-medium hover:border-[#285765] hover:bg-[#285765] hover:text-white transition cursor-pointer shadow-2xs"

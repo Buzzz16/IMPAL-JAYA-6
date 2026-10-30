@@ -1,23 +1,26 @@
 <script setup>
 /**
  * ============================================================================
- * MODUL AUTENTIKASI: LOGIN & REGISTRASI (FR-01 / UC-01 & FR-02 / UC-02 SKPL)
+ * MODUL AUTENTIKASI: LOGIN, REGISTRASI & LUPA KATA SANDI (/forgot-password)
  * File: src/features/auth/AuthPage.vue
  * ============================================================================
  */
 import { ref, computed } from 'vue';
-import { loginAccount, registerAccount } from './authStore';
+import { loginAccount, registerAccount, forgotPasswordAccount } from './authStore';
 
 const props = defineProps({
   mode: {
     type: String,
-    required: true, // 'login' | 'register'
+    required: true, // 'login' | 'register' | 'forgot'
   },
 });
 
 const emit = defineEmits(['navigate', 'login', 'admin']);
 
-const registering = computed(() => props.mode === 'register');
+const isRegister = computed(() => props.mode === 'register');
+const isForgot = computed(() => props.mode === 'forgot');
+const isLogin = computed(() => !isRegister.value && !isForgot.value);
+
 const error = ref('');
 const notice = ref('');
 const visible = ref(false);
@@ -52,14 +55,28 @@ function navigate(next) {
 
 async function handleSubmit() {
   error.value = '';
-  if (registering.value && passwordInput.value !== confirmPasswordInput.value) {
+
+  // Validasi konfirmasi password pada Register & Lupa Sandi
+  if ((isRegister.value || isForgot.value) && passwordInput.value !== confirmPasswordInput.value) {
     error.value = 'Konfirmasi kata sandi belum cocok.';
     return;
   }
 
   loading.value = true;
   try {
-    if (registering.value) {
+    if (isForgot.value) {
+      const res = await forgotPasswordAccount({
+        email: emailInput.value,
+        newPassword: passwordInput.value,
+        confirmPassword: confirmPasswordInput.value,
+      });
+      const successMsg = res.message || 'Kata sandi berhasil diperbarui! Silakan masuk.';
+      emit('navigate', 'login');
+      visible.value = false;
+      passwordInput.value = '';
+      confirmPasswordInput.value = '';
+      notice.value = successMsg;
+    } else if (isRegister.value) {
       await registerAccount({
         name: nameInput.value,
         email: emailInput.value,
@@ -112,13 +129,32 @@ async function handleSubmit() {
           <span>01 / PANTAU</span><span>02 / PAHAMI</span><span>03 / PEDULI</span>
         </div>
       </section>
-      <section class="auth-card" aria-labelledby="auth-title">
-        <span class="eyebrow">{{ registering ? 'MULAI LANGKAH BAIKMU' : 'SELAMAT DATANG KEMBALI' }}</span>
-        <h1 id="auth-title">{{ registering ? 'Bergabung di PoluSee.' : 'Masuk ke PoluSee.' }}</h1>
-        <p>{{ registering ? 'Lebih peduli udara, mulai dari dirimu.' : 'Pantau udara dan lanjutkan jejak kepedulianmu.' }}</p>
 
-        <!-- Kredensial Default Cepat untuk User & Admin -->
-        <div v-if="!registering" class="mb-4 rounded-xl border border-[#285765]/25 bg-[#285765]/5 p-3">
+      <section class="auth-card" aria-labelledby="auth-title">
+        <span class="eyebrow">
+          <template v-if="isForgot">PEMULIHAN KATA SANDI</template>
+          <template v-else-if="isRegister">MULAI LANGKAH BAIKMU</template>
+          <template v-else>SELAMAT DATANG KEMBALI</template>
+        </span>
+        <h1 id="auth-title">
+          <template v-if="isForgot">Atur Ulang Kata Sandi.</template>
+          <template v-else-if="isRegister">Bergabung di PoluSee.</template>
+          <template v-else>Masuk ke PoluSee.</template>
+        </h1>
+        <p>
+          <template v-if="isForgot">
+            Masukkan email terdaftar dan kata sandi baru untuk memulihkan akses akun Anda.
+          </template>
+          <template v-else-if="isRegister">
+            Lebih peduli udara, mulai dari dirimu.
+          </template>
+          <template v-else>
+            Pantau udara dan lanjutkan jejak kepedulianmu.
+          </template>
+        </p>
+
+        <!-- Kredensial Default Cepat untuk User & Admin (Hanya tampil di form login) -->
+        <div v-if="isLogin" class="mb-4 rounded-xl border border-[#285765]/25 bg-[#285765]/5 p-3">
           <div class="flex items-center justify-between text-[11px] font-bold text-[#285765] uppercase tracking-wider mb-2">
             <span>Kredensial Default Siap Pakai:</span>
             <span class="rounded bg-[#edce7e] px-2 py-0.5 text-[10px] text-[#285765] font-semibold">Tinggal Klik</span>
@@ -153,7 +189,7 @@ async function handleSubmit() {
         </div>
 
         <form :key="mode" @submit.prevent="handleSubmit">
-          <label v-if="registering" class="form-label">
+          <label v-if="isRegister" class="form-label">
             Nama lengkap
             <input
               v-model="nameInput"
@@ -164,8 +200,9 @@ async function handleSubmit() {
               maxlength="100"
             />
           </label>
+
           <label class="form-label">
-            Email
+            Email terdaftar
             <input
               v-model="emailInput"
               name="email"
@@ -175,15 +212,16 @@ async function handleSubmit() {
               required
             />
           </label>
+
           <label class="form-label">
-            Kata sandi
+            {{ isForgot ? 'Kata sandi baru' : 'Kata sandi' }}
             <div class="auth-password">
               <input
                 v-model="passwordInput"
                 name="password"
                 :type="visible ? 'text' : 'password'"
-                :autocomplete="registering ? 'new-password' : 'current-password'"
-                :placeholder="registering ? 'Minimal 8 karakter' : 'Masukkan kata sandi'"
+                :autocomplete="isRegister || isForgot ? 'new-password' : 'current-password'"
+                :placeholder="isRegister || isForgot ? 'Minimal 6 karakter' : 'Masukkan kata sandi'"
                 minlength="6"
                 required
               />
@@ -192,39 +230,74 @@ async function handleSubmit() {
               </button>
             </div>
           </label>
-          <label v-if="registering" class="form-label">
-            Konfirmasi kata sandi
+
+          <!-- Link Lupa Kata Sandi (Khusus Tampilan Login) -->
+          <div v-if="isLogin" class="flex justify-end -mt-3 mb-3">
+            <button
+              type="button"
+              class="text-xs text-[#285765] hover:underline font-semibold cursor-pointer"
+              @click="navigate('forgot')"
+            >
+              Lupa kata sandi?
+            </button>
+          </div>
+
+          <label v-if="isRegister || isForgot" class="form-label">
+            Konfirmasi kata sandi baru
             <input
               v-model="confirmPasswordInput"
               name="confirmPassword"
               :type="visible ? 'text' : 'password'"
               autocomplete="new-password"
-              placeholder="Ulangi kata sandi"
+              placeholder="Ulangi kata sandi baru"
               minlength="6"
               required
             />
           </label>
+
           <p v-if="error" class="auth-message !bg-[#faebeb] !text-[#b53434] !border !border-[#f0b2b2] !p-2.5 !rounded-lg" role="alert">
             ⚠️ {{ error }}
           </p>
           <p v-if="notice" class="auth-message !bg-[#eef8f2] !text-[#23704b] !border !border-[#a8dfc1] !p-2.5 !rounded-lg" role="status">
             ✓ {{ notice }}
           </p>
+
           <button type="submit" class="primary-button auth-submit cursor-pointer" :disabled="loading">
             <span v-if="loading">Memproses...</span>
-            <span v-else>{{ registering ? 'Daftar Sekarang' : 'Masuk ke PoluSee' }}</span>
+            <span v-else>
+              <template v-if="isForgot">Simpan Kata Sandi Baru</template>
+              <template v-else-if="isRegister">Daftar Sekarang</template>
+              <template v-else>Masuk ke PoluSee</template>
+            </span>
             <span v-if="!loading" aria-hidden="true">→</span>
           </button>
         </form>
+
         <div class="auth-switch">
-          {{ registering ? 'Sudah punya akun?' : 'Baru di PoluSee?' }}
-          <button type="button" class="text-link" @click="navigate(registering ? 'login' : 'register')">
-            {{ registering ? 'Masuk di sini' : 'Daftar sekarang' }}
-          </button>
+          <template v-if="isForgot">
+            Ingat kata sandi Anda?
+            <button type="button" class="text-link" @click="navigate('login')">
+              Masuk di sini
+            </button>
+          </template>
+          <template v-else-if="isRegister">
+            Sudah punya akun?
+            <button type="button" class="text-link" @click="navigate('login')">
+              Masuk di sini
+            </button>
+          </template>
+          <template v-else>
+            Baru di PoluSee?
+            <button type="button" class="text-link" @click="navigate('register')">
+              Daftar sekarang
+            </button>
+          </template>
         </div>
+
         <p class="auth-demo">
           Mode demo · Terhubung ke layanan autentikasi Express.js &amp; PostgreSQL (fallback demo otomatis jika server lokal belum aktif).
         </p>
+
         <button class="admin-entry" aria-label="Masuk sebagai admin" title="Akses admin" @click="emit('admin')">
           <svg width="42" height="42" viewBox="0 0 64 64" fill="none" aria-hidden="true">
             <path d="M10 33v-7a22 22 0 0 1 44 0v7" stroke="currentColor" stroke-width="4" />

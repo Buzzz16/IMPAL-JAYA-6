@@ -6,6 +6,7 @@
  */
 
 import { query } from '../../config/db.js';
+import { dbStore } from '../../data/dbStore.js';
 
 function mapSupabaseRowToReport(row) {
   const photo = row.url_foto_bukti || row.media_lampiran || '';
@@ -41,6 +42,13 @@ function mapSupabaseRowToReport(row) {
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
+const feedCache = new Map();
+const FEED_CACHE_TTL = 30000; // 30 detik TTL
+
+export function invalidateFeedCache() {
+  feedCache.clear();
+}
+
 export function isValidUuid(id) {
   return typeof id === 'string' && UUID_REGEX.test(id.trim());
 }
@@ -62,6 +70,12 @@ export async function getFeedKomunitas(req, res) {
     const rawUserId = req.user?.id_akun || null;
     const currentUserId = isValidUuid(rawUserId) ? rawUserId : null;
     const currentClientId = req.headers['x-client-id'] || req.query.client_id || null;
+
+    const cacheKey = `${currentUserId || 'anon'}_${currentClientId || 'anon'}`;
+    const cached = feedCache.get(cacheKey);
+    if (cached && (Date.now() - cached.timestamp < FEED_CACHE_TTL)) {
+      return res.status(200).json(cached.payload);
+    }
 
     const result = await query(
       `SELECT p.*, l.id_laporan, l.nomor_tiket, l.kategori_polusi, l.deskripsi_kejadian,
@@ -106,16 +120,18 @@ export async function getFeedKomunitas(req, res) {
     const count = result?.rows?.length || 0;
     res.locals.dbLog = `Ditemukan ${count} postingan`;
     const reports = (result?.rows || []).map(mapSupabaseRowToReport);
-    return res.status(200).json({
+    const responsePayload = {
       feed_komunitas: reports,
       reports: reports,
-    });
+    };
+    feedCache.set(cacheKey, { timestamp: Date.now(), payload: responsePayload });
+    return res.status(200).json(responsePayload);
   } catch (err) {
     res.locals.dbLog = `Gagal query: ${err.message}`;
-    return res.status(500).json({
-      message: 'Gagal mengambil feed komunitas dari database.',
-      feed_komunitas: [],
-      reports: [],
+    const fallbackReports = dbStore.getLaporan() || [];
+    return res.status(200).json({
+      feed_komunitas: fallbackReports,
+      reports: fallbackReports,
     });
   }
 }
@@ -150,6 +166,7 @@ export async function createPostKomunitas(req, res) {
     );
 
     if (insertRes && insertRes.rows.length > 0) {
+      invalidateFeedCache();
       res.locals.dbLog = `Post #${insertRes.rows[0].id_post} berhasil dibuat`;
       return res.status(201).json({ post_baru: insertRes.rows[0] });
     }
@@ -242,6 +259,7 @@ export async function createLaporanPolusi(req, res) {
         comments: [],
       };
       const mappedReport = mapSupabaseRowToReport(fullRow);
+      invalidateFeedCache();
       res.locals.dbLog = `Laporan ${nomorTiket} berhasil disimpan`;
 
       return res.status(201).json({
@@ -382,6 +400,7 @@ export async function toggleLikePost(req, res) {
     const totalLikes = updatedRes.rows[0]?.jumlah_like || 0;
     res.locals.dbLog = `Post #${postId} ${liked ? 'disukai' : 'batal disukai'} (${totalLikes} suka)`;
 
+    invalidateFeedCache();
     return res.status(200).json({
       success: true,
       liked,
@@ -470,6 +489,7 @@ export async function addCommentToPost(req, res) {
       time: new Date(row.created_at).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
     }));
 
+    invalidateFeedCache();
     return res.status(201).json({
       success: true,
       comment: commentObj,

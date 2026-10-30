@@ -132,7 +132,7 @@ const INITIAL_DATA = {
       reviews: [
         {
           id: 'rev-1',
-          userName: 'Aditya Nugraha',
+          userName: 'Warga Peduli',
           rating: 5,
           comment: 'Penjelasan rentang angka AQI sangat mudah dipahami untuk memantau udara harian di Samarinda.',
           createdAt: new Date().toISOString(),
@@ -178,8 +178,8 @@ const INITIAL_DATA = {
       id: 'rep-001',
       id_post: 1,
       ticket: '#TKT-2026-081',
-      author: 'Aditya Nugraha',
-      user: '@adityanugraha',
+      author: 'Warga Samarinda',
+      user: '@wargasamarinda',
       avatar: 'https://images.unsplash.com/photo-1630678334641-0c5339dfd1a7?auto=format&fit=crop&w=500&q=85',
       city: 'Samarinda',
       area: 'Sungai Karang Mumus',

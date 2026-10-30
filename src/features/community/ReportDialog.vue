@@ -217,7 +217,7 @@ async function handleToggleLike() {
 async function handleAddComment() {
   if (!comment.value.trim()) return;
   const newText = comment.value.trim();
-  const authorName = userProfileStore.nama_lengkap || userProfileStore.username || 'adityanugraha';
+  const authorName = userProfileStore.nama_lengkap || userProfileStore.username || 'Pengguna';
 
   const optimisticComment = {
     id: `temp-${Date.now()}`,
@@ -245,6 +245,14 @@ async function handleAddComment() {
   } catch (err) {
     console.warn('Gagal sinkron komentar ke database Supabase:', err);
   }
+}
+
+function getAuthorInitials(name = '') {
+  const parts = String(name).trim().split(/\s+/);
+  if (parts.length >= 2) {
+    return (parts[0][0] + parts[1][0]).toUpperCase();
+  }
+  return String(name).slice(0, 2).toUpperCase() || 'P';
 }
 
 const conditionMap = {
@@ -454,14 +462,14 @@ const conditionMap = {
         </div>
         <div class="report-detail-info">
           <div class="report-author">
-            <span class="avatar">AN</span>
+            <span class="avatar">{{ getAuthorInitials(report.author || userProfileStore.nama_lengkap || 'Pengguna') }}</span>
             <div>
-              <strong>{{ report.author || 'Aditya Nugraha' }}</strong>
+              <strong>{{ report.author || userProfileStore.nama_lengkap || 'Pengguna' }}</strong>
               <small>{{ report.area }} · {{ report.city }}</small>
             </div>
           </div>
           <p class="report-caption">
-            <strong>{{ report.user || '@adityanugraha' }}</strong> {{ report.caption }}
+            <strong>{{ report.user || userProfileStore.username || '@pengguna' }}</strong> {{ report.caption }}
           </p>
           <dl class="report-facts">
             <div>

@@ -1,77 +1,58 @@
 /**
  * ============================================================================
- * MODUL BACKEND: PENGELOLAAN ADMIN (UC-12, UC-13, UC-14, UC-15 SKPL-1000)
+ * MODUL BACKEND: ADMIN PANEL & MODERASI SISTEM (UC-12, UC-13, UC-14, UC-15)
  * File: backend/src/modules/admin/admin.controller.js
  * ============================================================================
  */
 
 import { query } from '../../config/db.js';
-import { dbStore } from '../../data/dbStore.js';
-import { getLiveIQAirData, hitungKategoriAQI } from '../../services/iqairService.js';
+import {
+  getLiveIQAirData,
+  getLiveCityStations,
+  hitungKategoriAQI,
+} from '../../services/iqairService.js';
 
-// UC-12: Monitoring Data AQI (Live IQAir Health, Latency, & Station Data)
-export async function getMonitoringAQI(_req, res) {
+// UC-12: Monitor & Validasi Data AQI (Integrasi API Eksternal IQAir)
+export async function getMonitoringAQI(req, res) {
+  return getMonitorDataAQI(req, res);
+}
+export async function getMonitorDataAQI(req, res) {
+  const lokasi = req.query.lokasi || 'Samarinda';
+  const start = Date.now();
+
   try {
-    const liveSamarinda = await getLiveIQAirData('Samarinda');
-    const latency = liveSamarinda.apiLatencyMs || 84;
-    const now = new Date();
-    const timeStr = now.toLocaleTimeString('id-ID');
-
-    const logs = [
-      { waktu: timeStr, endpoint: '/api/aqi/realtime?lokasi=Samarinda', status: '200 / OK', latency: latency },
-      { waktu: timeStr, endpoint: '/api/aqi/stations?lokasi=Samarinda', status: '200 / OK', latency: latency + 12 },
-      { waktu: timeStr, endpoint: '/api/komunitas/feed', status: '200 / OK', latency: 45 },
-      { waktu: timeStr, endpoint: '/api/rekomendasi/current', status: '200 / OK', latency: 38 },
-    ];
+    const live = await getLiveIQAirData(lokasi);
+    const latency = Date.now() - start;
 
     return res.status(200).json({
-      list_aqi: [
-        {
-          nama_lokasi: 'Samarinda (IQAir Live)',
-          nilai_aqi: liveSamarinda.aqi,
-          kategori_level: liveSamarinda.category,
-          pm25: liveSamarinda.pollutants.pm25,
-          pm10: liveSamarinda.pollutants.pm10,
-          waktu_ukur: liveSamarinda.timestamp,
-          latency_ms: latency,
-        },
-      ],
-      status_sensor: 'OPERASIONAL',
-      api_source: 'IQAIR_AIRVISUAL_API_V2',
+      lokasi: live.city,
+      provinsi: live.state,
+      nilai_aqi: live.aqi,
+      kategori: live.category,
+      pm25: live.pollutants.pm25,
+      pm10: live.pollutants.pm10,
+      cuaca: live.weather,
+      status_sinkronisasi: 'ONLINE / LIVE',
+      terakhir_disinkronkan: live.timestamp,
       latency_ms: latency,
-      quota_used_pct: 42,
-      requests_today: 4200,
-      requests_limit: 10000,
-      quota_remaining: 5800,
-      uptime_pct: 99.98,
-      last_checked: timeStr,
-      logs,
+      source: live.source,
+      stasiun_tersedia: await getLiveCityStations(lokasi),
     });
-  } catch {
-    const timeStr = new Date().toLocaleTimeString('id-ID');
-    return res.status(200).json({
-      list_aqi: [],
-      status_sensor: 'OPERASIONAL',
-      api_source: 'IQAIR_AIRVISUAL_API_V2',
-      latency_ms: 88,
-      quota_used_pct: 42,
-      requests_today: 4200,
-      requests_limit: 10000,
-      quota_remaining: 5800,
-      uptime_pct: 99.98,
-      last_checked: timeStr,
-      logs: [
-        { waktu: timeStr, endpoint: '/api/aqi/realtime', status: '200 / OK', latency: 88 },
-        { waktu: timeStr, endpoint: '/api/komunitas/feed', status: '200 / OK', latency: 42 },
-      ],
+  } catch (err) {
+    return res.status(500).json({
+      message: 'Gagal menghubungi server sensor eksternal untuk pemantauan data AQI.',
+      error: err.message,
     });
   }
 }
 
-// UC-12: Input / Update Data AQI oleh Admin
+// UC-12: Sinkronisasi / Kalibrasi Data AQI Secara Manual oleh Admin
 export async function simpanDataAQI(req, res) {
+  return sinkronisasiDataAQI(req, res);
+}
+export async function sinkronisasiDataAQI(req, res) {
   const {
-    nama_lokasi,
+    nama_lokasi = 'Samarinda',
     latitude = -0.5022,
     longitude = 117.1536,
     nilai_aqi,
@@ -96,12 +77,12 @@ export async function simpanDataAQI(req, res) {
     );
     if (insertRes && insertRes.rows.length > 0) {
       return res.status(201).json({
-        message: 'Data AQI berhasil disimpan',
+        message: 'Data AQI berhasil disimpan ke Supabase',
         data: insertRes.rows[0],
       });
     }
-  } catch {
-    // Selesai
+  } catch (err) {
+    return res.status(500).json({ message: 'Gagal menyimpan data AQI ke Supabase', error: err.message });
   }
 
   return res.status(201).json({
@@ -123,13 +104,10 @@ export async function getDaftarRekomendasiAdmin(_req, res) {
     const result = await query(
       'SELECT * FROM rekomendasi_kesehatan ORDER BY batas_bawah_aqi ASC'
     );
-    if (result && result.rows.length > 0) {
-      return res.status(200).json({ list_rekomendasi: result.rows });
-    }
-  } catch {
-    // Gunakan dbStore
+    return res.status(200).json({ list_rekomendasi: result?.rows || [] });
+  } catch (err) {
+    return res.status(500).json({ message: 'Gagal memuat aturan rekomendasi dari Supabase.', error: err.message });
   }
-  return res.status(200).json({ list_rekomendasi: dbStore.getAllRekomendasi() });
 }
 
 // UC-13: Kelola Rekomendasi Kesehatan (PUT)
@@ -144,24 +122,21 @@ export async function updateRekomendasiAdmin(req, res) {
   } = req.body;
 
   if (
+    batas_bawah_aqi === undefined ||
+    batas_atas_aqi === undefined ||
     !saran_aktivitas_luar ||
-    !saran_perlindungan_diri ||
-    Number(batas_bawah_aqi) > Number(batas_atas_aqi)
+    !saran_perlindungan_diri
   ) {
     return res
       .status(400)
-      .json({ message: 'Teks rekomendasi wajib diisi dan rentang AQI harus konsisten.' });
+      .json({ message: 'Rentang nilai AQI dan saran rekomendasi wajib diisi lengkap.' });
   }
 
   try {
     await query(
       `UPDATE rekomendasi_kesehatan
-       SET batas_bawah_aqi = $1,
-           batas_atas_aqi = $2,
-           saran_aktivitas_luar = $3,
-           saran_perlindungan_diri = $4,
-           saran_kelompok_rentan = COALESCE($5, saran_kelompok_rentan),
-           updated_at = CURRENT_TIMESTAMP
+       SET batas_bawah_aqi = $1, batas_atas_aqi = $2, saran_aktivitas_luar = $3,
+           saran_perlindungan_diri = $4, saran_kelompok_rentan = $5, updated_at = CURRENT_TIMESTAMP
        WHERE id_rekomendasi = $6`,
       [
         batas_bawah_aqi,
@@ -172,19 +147,10 @@ export async function updateRekomendasiAdmin(req, res) {
         id,
       ]
     );
-  } catch {
-    // Selesai
+    return res.status(200).json({ message: 'Rekomendasi kesehatan berhasil diperbarui di Supabase' });
+  } catch (err) {
+    return res.status(500).json({ message: 'Gagal memperbarui rekomendasi di Supabase.', error: err.message });
   }
-
-  dbStore.updateRekomendasi(id, {
-    batas_bawah_aqi: Number(batas_bawah_aqi),
-    batas_atas_aqi: Number(batas_atas_aqi),
-    saran_aktivitas_luar,
-    saran_perlindungan_diri,
-    saran_kelompok_rentan: saran_kelompok_rentan || '',
-  });
-
-  return res.status(200).json({ message: 'Rekomendasi kesehatan berhasil diperbarui' });
 }
 
 // UC-14: Moderasi Konten Komunitas (GET)
@@ -196,21 +162,18 @@ export async function getAntreanModerasi(_req, res) {
        LEFT JOIN laporan_polusi l ON p.id_post = l.id_post
        ORDER BY p.created_at DESC`
     );
-    if (result && result.rows.length > 0) {
-      const reports = result.rows.map((r) => ({
-        id: `post-${r.id_post}`,
-        ticket: r.nomor_tiket || `#TKT-${r.id_post}`,
-        caption: r.isi_konten || r.judul_post,
-        status: r.status_verifikasi || 'TERVERIFIKASI',
-        date: r.created_at,
-        time: new Date(r.created_at).toLocaleDateString('id-ID'),
-      }));
-      return res.status(200).json({ daftar_moderasi: result.rows, reports });
-    }
-  } catch {
-    // Selesai
+    const reports = (result?.rows || []).map((r) => ({
+      id: `post-${r.id_post}`,
+      ticket: r.nomor_tiket || `#TKT-${r.id_post}`,
+      caption: r.isi_konten || r.judul_post,
+      status: r.status_verifikasi || 'TERVERIFIKASI',
+      date: r.created_at,
+      time: new Date(r.created_at).toLocaleDateString('id-ID'),
+    }));
+    return res.status(200).json({ daftar_moderasi: result?.rows || [], reports });
+  } catch (err) {
+    return res.status(500).json({ message: 'Gagal memuat antrean moderasi dari Supabase.', error: err.message });
   }
-  return res.status(200).json({ daftar_moderasi: dbStore.getReports(), reports: dbStore.getReports() });
 }
 
 // UC-14: Moderasi Konten Komunitas (PATCH)
@@ -224,7 +187,6 @@ export async function updateStatusModerasi(req, res) {
       .json({ message: 'Catatan alasan wajib diisi untuk penolakan atau penghapusan konten.' });
   }
 
-  // Parse ID (dukung integer murni, 'post-1', 'rep-1', atau nomor tiket)
   let targetPostId = null;
   const cleanStr = String(id || '').trim();
   const matchNum = cleanStr.replace(/^post-/, '').replace(/^rep-/, '');
@@ -263,19 +225,11 @@ export async function updateStatusModerasi(req, res) {
         ]);
       }
     }
+    return res.status(200).json({ message: 'Status moderasi berhasil diperbarui di Supabase' });
   } catch (err) {
     console.error('[Moderasi DB Update Error]:', err.message);
+    return res.status(500).json({ message: 'Gagal memperbarui status moderasi di Supabase.', error: err.message });
   }
-
-  if (status === 'DIHAPUS') {
-    dbStore.deleteReport(id);
-    dbStore.deleteReport(cleanStr);
-    if (targetPostId) dbStore.deleteReport(`post-${targetPostId}`);
-  } else {
-    dbStore.updateReportStatus(id, status, catatan);
-  }
-
-  return res.status(200).json({ message: 'Status moderasi berhasil diperbarui' });
 }
 
 // UC-14: Hapus Konten Komunitas Permanen (DELETE)
@@ -299,28 +253,21 @@ export async function hapusPostModerasi(req, res) {
     if (targetPostId) {
       await query('DELETE FROM post_komunitas WHERE id_post = $1', [targetPostId]);
     }
+    return res.status(200).json({ message: 'Konten berhasil dihapus permanen dari Supabase.' });
   } catch (err) {
     console.error('[Hapus Post DB Error]:', err.message);
+    return res.status(500).json({ message: 'Gagal menghapus konten dari Supabase.', error: err.message });
   }
-
-  dbStore.deleteReport(id);
-  dbStore.deleteReport(cleanStr);
-  if (targetPostId) dbStore.deleteReport(`post-${targetPostId}`);
-
-  return res.status(200).json({ message: 'Konten berhasil dihapus permanen dari database.' });
 }
 
 // UC-15: Bagikan Dan Ubah Konten Edukasi
 export async function getDaftarEdukasiAdmin(_req, res) {
   try {
     const result = await query('SELECT * FROM konten_edukasi ORDER BY published_at DESC');
-    if (result && result.rows.length > 0) {
-      return res.status(200).json({ list_edukasi: result.rows });
-    }
-  } catch {
-    // Selesai
+    return res.status(200).json({ list_edukasi: result?.rows || [] });
+  } catch (err) {
+    return res.status(500).json({ message: 'Gagal memuat daftar edukasi dari Supabase.', error: err.message });
   }
-  return res.status(200).json({ list_edukasi: dbStore.getArticles() });
 }
 
 export async function simpanAtauUbahEdukasiAdmin(req, res) {
@@ -358,37 +305,19 @@ export async function simpanAtauUbahEdukasiAdmin(req, res) {
         articleId = insRes.rows[0].id_konten;
       }
     }
+    return res.status(200).json({ message: 'Konten edukasi berhasil disimpan ke Supabase', id: articleId });
   } catch (err) {
     console.warn('[Admin Edukasi DB Warning]:', err.message);
+    return res.status(500).json({ message: 'Gagal menyimpan konten edukasi ke Supabase.', error: err.message });
   }
-
-  if (!articleId) {
-    articleId = `lesson-${Date.now()}`;
-  }
-
-  dbStore.saveArticle({
-    id: articleId,
-    title: articleTitle,
-    topic: articleTopic,
-    summary: articleBody.slice(0, 150) + '...',
-    sections: Array.isArray(sections) ? sections : articleBody.split('\n\n'),
-    audience: 'Semua orang',
-    minutes: Math.max(2, Math.ceil(articleBody.split(' ').length / 150)),
-    views: 0,
-    cover: articleCover,
-    reviews: [],
-  });
-
-  return res
-    .status(200)
-    .json({ message: 'Konten edukasi berhasil disimpan dan dipublikasikan', id: articleId });
 }
 
 export async function hapusEdukasiAdmin(req, res) {
   const { id } = req.params;
   try {
     await query('DELETE FROM konten_edukasi WHERE id_konten = $1', [id]);
-  } catch {}
-  dbStore.deleteArticle(id);
-  return res.status(200).json({ message: 'Artikel edukasi berhasil dihapus' });
+    return res.status(200).json({ message: 'Artikel edukasi berhasil dihapus dari Supabase' });
+  } catch (err) {
+    return res.status(500).json({ message: 'Gagal menghapus artikel edukasi dari Supabase.', error: err.message });
+  }
 }

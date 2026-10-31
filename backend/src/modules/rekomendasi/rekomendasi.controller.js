@@ -6,10 +6,9 @@
  */
 
 import { query } from '../../config/db.js';
-import { dbStore } from '../../data/dbStore.js';
 
 export async function getRekomendasiByAQI(req, res) {
-  const nilaiAqi = parseInt(req.query.aqi || '150', 10);
+  const nilaiAqi = parseInt(req.query.aqi || '100', 10);
   let kategoriRentan = req.query.kategori || 'Umum';
 
   try {
@@ -41,18 +40,8 @@ export async function getRekomendasiByAQI(req, res) {
             : 'Rekomendasi telah disesuaikan dengan profil kesehatan Anda',
       });
     }
-  } catch {
-    // Gunakan dbStore
+    return res.status(404).json({ message: 'Aturan rekomendasi untuk nilai AQI ini tidak ditemukan di Supabase.' });
+  } catch (err) {
+    return res.status(500).json({ message: 'Gagal memuat rekomendasi kesehatan dari Supabase.', error: err.message });
   }
-
-  const rekom = dbStore.getRekomendasi(nilaiAqi);
-  return res.status(200).json({
-    nilai_aqi: nilaiAqi,
-    kategori_rentan: kategoriRentan,
-    rekomendasi: rekom,
-    info:
-      kategoriRentan === 'Umum'
-        ? 'Lengkapi profil untuk saran lebih spesifik'
-        : 'Rekomendasi telah disesuaikan dengan profil kesehatan Anda',
-  });
 }

@@ -91,7 +91,7 @@ pool
   })
   .catch((err) => {
     console.log(
-      `[Database Fallback]: Belum terhubung ke PostgreSQL (${err.message}). Menggunakan In-Memory dbStore sebagai cadangan.`
+      `[Database Error]: Gagal terhubung ke database Supabase: ${err.message}`
     );
   });
 

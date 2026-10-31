@@ -43,18 +43,16 @@ export async function login(req, res) {
       account = dbStore.findUserByEmail(cleanEmail);
     }
 
-    // Dukung alias singkat seperti 'admin' atau 'user'
+    // Dukung alias singkat seperti 'admin'
     if (!account) {
       if (cleanEmail === 'admin' || cleanEmail.startsWith('admin@') || cleanEmail.includes('admin')) {
         account = dbStore.findUserByEmail('admin@polusee.id');
-      } else if (cleanEmail === 'user' || cleanEmail.startsWith('user@') || cleanEmail.includes('user')) {
-        account = dbStore.findUserByEmail('user@polusee.id');
       }
     }
 
     if (!account) {
       return res.status(401).json({
-        message: 'Akun tidak ditemukan. Gunakan email default: user@polusee.id (User) atau admin@polusee.id (Admin).',
+        message: 'Akun tidak ditemukan. Silakan lakukan registrasi akun terlebih dahulu atau masuk sebagai Admin.',
       });
     }
 
@@ -105,10 +103,13 @@ export async function login(req, res) {
       profil: {
         id_akun: account.id_akun,
         nama_lengkap: account.nama_lengkap,
+        username: account.username || `@${account.email.split('@')[0]}`,
         email: account.email,
         role: userRole,
+        umur: account.umur || 25,
         lokasi_default: account.lokasi_default || 'Samarinda',
         kategori_rentan: account.kategori_rentan || 'Umum',
+        peringatan_aqi_100: account.peringatan_aqi_100 ?? false,
         foto_profil: account.foto_profil || '',
       },
     });
@@ -160,6 +161,7 @@ export async function register(req, res) {
     let newAccount = {
       id_akun: newId,
       nama_lengkap: nama.trim(),
+      username: `@${cleanEmail.split('@')[0]}`,
       email: cleanEmail,
       password_hash: passwordHash,
       role: 'USER',
@@ -211,10 +213,14 @@ export async function register(req, res) {
       user: {
         id_akun: newAccount.id_akun,
         nama_lengkap: newAccount.nama_lengkap,
+        username: newAccount.username || `@${newAccount.email.split('@')[0]}`,
         email: newAccount.email,
         role: 'USER',
+        umur: newAccount.umur || 25,
         lokasi_default: newAccount.lokasi_default,
         kategori_rentan: newAccount.kategori_rentan,
+        peringatan_aqi_100: newAccount.peringatan_aqi_100 ?? true,
+        foto_profil: newAccount.foto_profil || '',
       },
     });
   } catch (err) {

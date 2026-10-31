@@ -14,24 +14,39 @@ import {
   saveStoredUser,
 } from '../../services/apiClient';
 
-const storedUser = getStoredUser();
+function getInitialProfile() {
+  const storedUser = getStoredUser();
+  if (storedUser && (storedUser.email || storedUser.nama_lengkap || storedUser.id_akun)) {
+    return {
+      id_akun: storedUser.id_akun || '',
+      nama_lengkap: storedUser.nama_lengkap || '',
+      username: storedUser.username || '',
+      email: storedUser.email || '',
+      umur: storedUser.umur ?? null,
+      lokasi_default: storedUser.lokasi_default || 'Samarinda',
+      kategori_rentan: storedUser.kategori_rentan || 'Umum',
+      peringatan_aqi_100: storedUser.peringatan_aqi_100 ?? false,
+      foto_profil: storedUser.foto_profil || '',
+      role: storedUser.role || '',
+    };
+  }
 
-export const userProfileStore = reactive({
-  id_akun: storedUser?.id_akun || 'user-demo-001',
-  nama_lengkap: storedUser?.nama_lengkap || '',
-  username: storedUser?.username || '',
-  email: storedUser?.email || '',
-  umur: storedUser?.umur ?? 28,
-  lokasi_default: storedUser?.lokasi_default || 'Samarinda',
-  kategori_rentan: storedUser?.kategori_rentan || 'Umum',
-  peringatan_aqi_100: storedUser?.peringatan_aqi_100 ?? true,
-  foto_profil:
-    storedUser?.foto_profil ||
-    'https://images.unsplash.com/photo-1630678334641-0c5339dfd1a7?auto=format&fit=crop&w=500&q=85',
-  role: storedUser?.role || 'USER',
-});
+  return {
+    id_akun: '',
+    nama_lengkap: '',
+    username: '',
+    email: '',
+    umur: null,
+    lokasi_default: 'Samarinda',
+    kategori_rentan: 'Umum',
+    peringatan_aqi_100: false,
+    foto_profil: '',
+    role: '',
+  };
+}
 
-// Sinkronisasi otomatis ke sessionStorage dan localStorage setiap kali state profil berubah
+export const userProfileStore = reactive(getInitialProfile());
+
 watch(
   userProfileStore,
   (val) => {
@@ -62,7 +77,6 @@ export async function loginAccount(email, password) {
     if (err.status === 401 || err.status === 403) {
       throw err;
     }
-    // Jika server Express belum dijalankan, lanjutkan dengan sesi demo lokal
   }
   return { success: true, role: userProfileStore.role || 'USER', fromBackend: false };
 }
@@ -96,16 +110,9 @@ export async function registerAccount({ name, email, password, confirmPassword, 
     }
   }
 
-  // Simpan ke store lokal pada mode demo
-  if (name) {
-    userProfileStore.nama_lengkap = name;
-  }
-  if (email) {
-    userProfileStore.email = email;
-  }
-  if (lokasi_default) {
-    userProfileStore.lokasi_default = lokasi_default;
-  }
+  if (name) userProfileStore.nama_lengkap = name;
+  if (email) userProfileStore.email = email;
+  if (lokasi_default) userProfileStore.lokasi_default = lokasi_default;
   saveStoredUser(userProfileStore);
   return { success: true, fromBackend: false };
 }
@@ -131,10 +138,6 @@ export async function updateProfileData(payload) {
   return userProfileStore;
 }
 
-
-/**
- * Lupa & Atur Ulang Kata Sandi Akun (POST /api/auth/forgot-password)
- */
 export async function forgotPasswordAccount({ email, newPassword, confirmPassword }) {
   try {
     const res = await apiRequest('/auth/forgot-password', {
@@ -154,7 +157,6 @@ export async function forgotPasswordAccount({ email, newPassword, confirmPasswor
     if (err.status === 400 || err.status === 404) {
       throw err;
     }
-    // Fallback mode demo
     return {
       success: true,
       message: 'Kata sandi berhasil diperbarui! Silakan masuk dengan kata sandi baru Anda.',
@@ -164,7 +166,16 @@ export async function forgotPasswordAccount({ email, newPassword, confirmPasswor
 
 export function logoutAccount() {
   clearStoredSession();
-  userProfileStore.nama_lengkap = '';
-  userProfileStore.username = '';
-  userProfileStore.email = '';
+  Object.assign(userProfileStore, {
+    id_akun: '',
+    nama_lengkap: '',
+    username: '',
+    email: '',
+    umur: null,
+    lokasi_default: 'Samarinda',
+    kategori_rentan: 'Umum',
+    peringatan_aqi_100: false,
+    foto_profil: '',
+    role: '',
+  });
 }

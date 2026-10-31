@@ -80,7 +80,7 @@ pool
   })
   .catch((err) => {
     console.log(
-      `[Database Fallback]: Belum terhubung ke PostgreSQL (${err.message}). Menggunakan In-Memory dbStore sebagai cadangan.`
+      `[Database Error]: Gagal terhubung ke database Supabase: ${err.message}`
     );
   });
 
@@ -88,7 +88,7 @@ export async function query(text, params) {
   try {
     return await pool.query(text, params);
   } catch (err) {
-    // Melempar error agar controller dapat beralih ke dynamic dbStore
+    // Melempar error query Supabase
     throw err;
   }
 }

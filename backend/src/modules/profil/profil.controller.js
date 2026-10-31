@@ -6,10 +6,13 @@
  */
 
 import { query } from '../../config/db.js';
-import { dbStore } from '../../data/dbStore.js';
 
 export async function getProfil(req, res) {
-  const idAkun = req.user?.id_akun || '11111111-1111-1111-1111-111111111111';
+  const idAkun = req.user?.id_akun;
+  if (!idAkun) {
+    return res.status(401).json({ message: 'Sesi pengguna tidak valid.' });
+  }
+
   try {
     const result = await query(
       `SELECT a.id_akun, a.nama_lengkap, a.email, a.role,
@@ -24,17 +27,19 @@ export async function getProfil(req, res) {
       res.locals.dbLog = 'Data profil pengguna dimuat';
       return res.status(200).json({ profil_user: result.rows[0] });
     }
-  } catch {
-    // Gunakan dbStore
+    return res.status(404).json({ message: 'Profil pengguna tidak ditemukan di database.' });
+  } catch (err) {
+    return res.status(500).json({ message: 'Gagal memuat profil pengguna dari Supabase.', error: err.message });
   }
-
-  const user = dbStore.findUserById(idAkun) || dbStore.getUsers()[0];
-  return res.status(200).json({ profil_user: user });
 }
 
 export async function updateProfil(req, res) {
-  const idAkun = req.user?.id_akun || '11111111-1111-1111-1111-111111111111';
-  const { nama_lengkap, nama, lokasi_default, latitude, longitude, kategori_rentan, foto_profil, username, umur, peringatan_aqi_100 } = req.body;
+  const idAkun = req.user?.id_akun;
+  if (!idAkun) {
+    return res.status(401).json({ message: 'Sesi pengguna tidak valid.' });
+  }
+
+  const { nama_lengkap, nama, lokasi_default, latitude, longitude, kategori_rentan, foto_profil } = req.body;
   const namaBaru = (nama_lengkap || nama || '').trim();
 
   try {
@@ -62,19 +67,21 @@ export async function updateProfil(req, res) {
         idAkun
       ]
     );
-  } catch {
-    // Selesai
+
+    const checkRes = await query(
+      `SELECT a.id_akun, a.nama_lengkap, a.email, a.role,
+              u.lokasi_default, u.latitude, u.longitude, u.kategori_rentan, u.foto_profil
+       FROM akun a
+       LEFT JOIN users u ON a.id_akun = u.id_akun
+       WHERE a.id_akun = $1`,
+      [idAkun]
+    );
+
+    return res.status(200).json({
+      message: 'Profil berhasil diperbarui di Supabase',
+      profil_user: checkRes?.rows?.[0] || {}
+    });
+  } catch (err) {
+    return res.status(500).json({ message: 'Gagal memperbarui profil di Supabase.', error: err.message });
   }
-
-  const updated = dbStore.updateUser(idAkun, {
-    ...(namaBaru ? { nama_lengkap: namaBaru } : {}),
-    ...(username ? { username } : {}),
-    ...(umur ? { umur: Number(umur) } : {}),
-    ...(lokasi_default ? { lokasi_default } : {}),
-    ...(kategori_rentan ? { kategori_rentan } : {}),
-    ...(foto_profil ? { foto_profil } : {}),
-    ...(peringatan_aqi_100 !== undefined ? { peringatan_aqi_100: Boolean(peringatan_aqi_100) } : {}),
-  });
-
-  return res.status(200).json({ message: 'Profil berhasil diperbarui', profil_user: updated });
 }

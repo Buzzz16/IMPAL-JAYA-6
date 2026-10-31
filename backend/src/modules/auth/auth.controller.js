@@ -8,7 +8,6 @@
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { query } from '../../config/db.js';
-import { dbStore } from '../../data/dbStore.js';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'polusee_super_secret_jwt_key_2025';
 const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '7d';
@@ -35,30 +34,17 @@ export async function login(req, res) {
       if (result && result.rows.length > 0) {
         account = result.rows[0];
       }
-    } catch {
-      // Gunakan dbStore
-    }
-
-    if (!account) {
-      account = dbStore.findUserByEmail(cleanEmail);
-    }
-
-    // Dukung alias singkat seperti 'admin' atau 'user'
-    if (!account) {
-      if (cleanEmail === 'admin' || cleanEmail.startsWith('admin@') || cleanEmail.includes('admin')) {
-        account = dbStore.findUserByEmail('admin@polusee.id');
-      } else if (cleanEmail === 'user' || cleanEmail.startsWith('user@') || cleanEmail.includes('user')) {
-        account = dbStore.findUserByEmail('user@polusee.id');
-      }
+    } catch (err) {
+      return res.status(500).json({ message: 'Gagal terhubung ke database Supabase.', error: err.message });
     }
 
     if (!account) {
       return res.status(401).json({
-        message: 'Akun tidak ditemukan. Gunakan email default: user@polusee.id (User) atau admin@polusee.id (Admin).',
+        message: 'Akun tidak ditemukan. Silakan periksa kembali email Anda atau lakukan registrasi.',
       });
     }
 
-    // Verifikasi kata sandi
+    // Verifikasi kata sandi dengan bcrypt
     let isPasswordValid = false;
     if (account.password_hash) {
       try {
@@ -68,26 +54,13 @@ export async function login(req, res) {
       }
     }
 
-    const isAdmin = account.role === 'ADMIN' || cleanEmail.includes('admin');
-
-    // Dukung password default yang mudah diingat
-    if (!isPasswordValid) {
-      if (isAdmin && (password === 'admin123' || password === 'password123')) {
-        isPasswordValid = true;
-      } else if (!isAdmin && (password === 'user123' || password === 'password123')) {
-        isPasswordValid = true;
-      }
-    }
-
     if (!isPasswordValid) {
       return res.status(401).json({
-        message: isAdmin
-          ? 'Kata sandi salah. Gunakan sandi default Admin: admin123'
-          : 'Kata sandi salah. Gunakan sandi default User: user123',
+        message: 'Kata sandi salah. Silakan coba lagi.',
       });
     }
 
-    const userRole = isAdmin ? 'ADMIN' : (account.role || 'USER');
+    const userRole = account.role || 'USER';
 
     const token = jwt.sign(
       {
@@ -133,66 +106,38 @@ export async function register(req, res) {
     }
 
     const cleanEmail = String(email).trim().toLowerCase();
-    let emailExists = false;
 
     try {
       const check = await query('SELECT id_akun FROM akun WHERE LOWER(TRIM(email)) = $1', [cleanEmail]);
       if (check && check.rows.length > 0) {
-        emailExists = true;
+        return res
+          .status(409)
+          .json({ message: 'Email sudah terdaftar. Silakan login atau gunakan email lain.' });
       }
-    } catch {
-      // Periksa di dbStore
-    }
-
-    if (!emailExists && dbStore.findUserByEmail(cleanEmail)) {
-      emailExists = true;
-    }
-
-    if (emailExists) {
-      return res
-        .status(409)
-        .json({ message: 'Email sudah terdaftar. Silakan login atau gunakan email lain.' });
+    } catch (err) {
+      return res.status(500).json({ message: 'Gagal memeriksa ketersediaan email di Supabase.', error: err.message });
     }
 
     const passwordHash = await bcrypt.hash(password, 10);
-    const newId = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `user-${Date.now()}`;
 
-    let newAccount = {
-      id_akun: newId,
-      nama_lengkap: nama.trim(),
-      email: cleanEmail,
-      password_hash: passwordHash,
-      role: 'USER',
-      status_aktif: true,
-      umur: 25,
-      lokasi_default: lokasi_default || 'Samarinda',
-      latitude: -0.5022,
-      longitude: 117.1536,
-      kategori_rentan: 'Umum',
-      peringatan_aqi_100: true,
-      foto_profil: '',
-    };
+    const insertAkun = await query(
+      `INSERT INTO akun (nama_lengkap, email, password_hash, role, status_aktif)
+       VALUES ($1, $2, $3, 'USER', TRUE)
+       RETURNING id_akun, nama_lengkap, email, role`,
+      [nama.trim(), cleanEmail, passwordHash]
+    );
 
-    try {
-      const insertAkun = await query(
-        `INSERT INTO akun (nama_lengkap, email, password_hash, role, status_aktif)
-         VALUES ($1, $2, $3, 'USER', TRUE)
-         RETURNING id_akun, nama_lengkap, email, role`,
-        [nama.trim(), cleanEmail, passwordHash]
-      );
-      if (insertAkun && insertAkun.rows.length > 0) {
-        newAccount = { ...newAccount, ...insertAkun.rows[0] };
-        await query(
-          `INSERT INTO users (id_akun, lokasi_default, kategori_rentan)
-           VALUES ($1, $2, 'Umum')`,
-          [newAccount.id_akun, lokasi_default || 'Samarinda']
-        );
-      }
-    } catch {
-      // Disimpan via dbStore
+    if (!insertAkun || insertAkun.rows.length === 0) {
+      return res.status(500).json({ message: 'Gagal membuat akun di database Supabase.' });
     }
 
-    dbStore.addUser(newAccount);
+    const newAccount = insertAkun.rows[0];
+
+    await query(
+      `INSERT INTO users (id_akun, lokasi_default, kategori_rentan)
+       VALUES ($1, $2, 'Umum')`,
+      [newAccount.id_akun, lokasi_default || 'Samarinda']
+    );
 
     // <<include>> UC-01 Login: Terbitkan JWT Token sesi langsung
     const token = jwt.sign(
@@ -213,13 +158,17 @@ export async function register(req, res) {
         nama_lengkap: newAccount.nama_lengkap,
         email: newAccount.email,
         role: 'USER',
-        lokasi_default: newAccount.lokasi_default,
-        kategori_rentan: newAccount.kategori_rentan,
+        lokasi_default: lokasi_default || 'Samarinda',
+        kategori_rentan: 'Umum',
       },
     });
   } catch (err) {
     return res
       .status(500)
+<<<<<<< Updated upstream
       .json({ message: 'Gagal melakukan registrasi akun.', error: err.message });
+=======
+      .json({ message: 'Gagal melakukan registrasi akun di Supabase.', error: err.message });
+>>>>>>> Stashed changes
   }
 }

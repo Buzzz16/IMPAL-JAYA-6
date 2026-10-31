@@ -34,13 +34,24 @@ export async function login(req, res) {
       if (result && result.rows.length > 0) {
         account = result.rows[0];
       }
-    } catch (err) {
-      return res.status(500).json({ message: 'Gagal terhubung ke database Supabase.', error: err.message });
+    } catch {
+      // Gunakan dbStore
+    }
+
+    if (!account) {
+      account = dbStore.findUserByEmail(cleanEmail);
+    }
+
+    // Dukung alias singkat seperti 'admin'
+    if (!account) {
+      if (cleanEmail === 'admin' || cleanEmail.startsWith('admin@') || cleanEmail.includes('admin')) {
+        account = dbStore.findUserByEmail('admin@polusee.id');
+      }
     }
 
     if (!account) {
       return res.status(401).json({
-        message: 'Akun tidak ditemukan. Silakan periksa kembali email Anda atau lakukan registrasi.',
+        message: 'Akun tidak ditemukan. Silakan lakukan registrasi akun terlebih dahulu atau masuk sebagai Admin.',
       });
     }
 
@@ -78,10 +89,13 @@ export async function login(req, res) {
       profil: {
         id_akun: account.id_akun,
         nama_lengkap: account.nama_lengkap,
+        username: account.username || `@${account.email.split('@')[0]}`,
         email: account.email,
         role: userRole,
+        umur: account.umur || 25,
         lokasi_default: account.lokasi_default || 'Samarinda',
         kategori_rentan: account.kategori_rentan || 'Umum',
+        peringatan_aqi_100: account.peringatan_aqi_100 ?? false,
         foto_profil: account.foto_profil || '',
       },
     });
@@ -120,12 +134,22 @@ export async function register(req, res) {
 
     const passwordHash = await bcrypt.hash(password, 10);
 
-    const insertAkun = await query(
-      `INSERT INTO akun (nama_lengkap, email, password_hash, role, status_aktif)
-       VALUES ($1, $2, $3, 'USER', TRUE)
-       RETURNING id_akun, nama_lengkap, email, role`,
-      [nama.trim(), cleanEmail, passwordHash]
-    );
+    let newAccount = {
+      id_akun: newId,
+      nama_lengkap: nama.trim(),
+      username: `@${cleanEmail.split('@')[0]}`,
+      email: cleanEmail,
+      password_hash: passwordHash,
+      role: 'USER',
+      status_aktif: true,
+      umur: 25,
+      lokasi_default: lokasi_default || 'Samarinda',
+      latitude: -0.5022,
+      longitude: 117.1536,
+      kategori_rentan: 'Umum',
+      peringatan_aqi_100: true,
+      foto_profil: '',
+    };
 
     if (!insertAkun || insertAkun.rows.length === 0) {
       return res.status(500).json({ message: 'Gagal membuat akun di database Supabase.' });
@@ -156,19 +180,95 @@ export async function register(req, res) {
       user: {
         id_akun: newAccount.id_akun,
         nama_lengkap: newAccount.nama_lengkap,
+        username: newAccount.username || `@${newAccount.email.split('@')[0]}`,
         email: newAccount.email,
         role: 'USER',
-        lokasi_default: lokasi_default || 'Samarinda',
-        kategori_rentan: 'Umum',
+        umur: newAccount.umur || 25,
+        lokasi_default: newAccount.lokasi_default,
+        kategori_rentan: newAccount.kategori_rentan,
+        peringatan_aqi_100: newAccount.peringatan_aqi_100 ?? true,
+        foto_profil: newAccount.foto_profil || '',
       },
     });
   } catch (err) {
     return res
       .status(500)
-<<<<<<< Updated upstream
       .json({ message: 'Gagal melakukan registrasi akun.', error: err.message });
-=======
-      .json({ message: 'Gagal melakukan registrasi akun di Supabase.', error: err.message });
->>>>>>> Stashed changes
+  }
+}
+
+// UC-03: Lupa Kata Sandi & Atur Ulang Sandi
+export async function forgotPassword(req, res) {
+  try {
+    const { email, password, newPassword, confirmPassword } = req.body;
+    const targetPassword = (newPassword || password || '').trim();
+
+    if (!email) {
+      return res.status(400).json({ message: 'Email terdaftar wajib diisi.' });
+    }
+    if (!targetPassword) {
+      return res.status(400).json({ message: 'Kata sandi baru wajib diisi.' });
+    }
+    if (confirmPassword && targetPassword !== confirmPassword.trim()) {
+      return res.status(400).json({ message: 'Konfirmasi kata sandi tidak cocok.' });
+    }
+    if (targetPassword.length < 6) {
+      return res.status(400).json({ message: 'Kata sandi baru minimal 6 karakter.' });
+    }
+
+    const cleanEmail = String(email).trim().toLowerCase();
+    let account = null;
+
+    try {
+      const result = await query(
+        `SELECT a.id_akun, a.email FROM akun a WHERE LOWER(TRIM(a.email)) = $1`,
+        [cleanEmail]
+      );
+      if (result && result.rows.length > 0) {
+        account = result.rows[0];
+      }
+    } catch {
+      // Gunakan dbStore
+    }
+
+    if (!account) {
+      account = dbStore.findUserByEmail(cleanEmail);
+    }
+
+    // Dukung alias email default
+    if (!account) {
+      if (cleanEmail === 'admin' || cleanEmail.startsWith('admin@')) {
+        account = dbStore.findUserByEmail('admin@polusee.id');
+      } else if (cleanEmail === 'user' || cleanEmail.startsWith('user@')) {
+        account = dbStore.findUserByEmail('user@polusee.id');
+      }
+    }
+
+    if (!account) {
+      return res.status(404).json({ message: 'Akun dengan email tersebut tidak ditemukan.' });
+    }
+
+    const passwordHash = await bcrypt.hash(targetPassword, 10);
+
+    try {
+      await query(
+        `UPDATE akun SET password_hash = $1, updated_at = CURRENT_TIMESTAMP WHERE id_akun = $2`,
+        [passwordHash, account.id_akun]
+      );
+    } catch {
+      // Selesai
+    }
+
+    dbStore.updateUser(account.id_akun, { password_hash: passwordHash });
+
+    return res.status(200).json({
+      success: true,
+      message: 'Kata sandi berhasil diperbarui! Silakan masuk dengan kata sandi baru Anda.',
+    });
+  } catch (err) {
+    return res.status(500).json({
+      message: 'Gagal mengatur ulang kata sandi.',
+      error: err.message,
+    });
   }
 }

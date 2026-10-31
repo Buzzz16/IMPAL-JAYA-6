@@ -431,7 +431,7 @@ async function handleAdminLogin() {
             v-model="name"
             required
             maxlength="80"
-            placeholder="Contoh: Aditya"
+            placeholder="Contoh: Nama Pengguna"
           />
         </label>
         <label class="form-label">
@@ -819,7 +819,7 @@ async function handleAdminLogin() {
               @error="$event.target.style.display = 'none'"
             />
             <span class="eyebrow">
-              USER / {{ item.author || (index % 2 === 0 ? 'ADITYA NUGRAHA' : 'RINA K.') }}
+              USER / {{ item.author || (index % 2 === 0 ? 'PENGGUNA 1' : 'PENGGUNA 2') }}
             </span>
             <h3>{{ item.caption }}</h3>
             <p>{{ item.area || 'Area Terbuka' }} · {{ item.city || 'Samarinda' }}</p>

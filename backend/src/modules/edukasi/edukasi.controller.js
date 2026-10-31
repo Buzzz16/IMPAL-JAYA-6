@@ -81,7 +81,7 @@ export async function tambahUlasanEdukasi(req, res) {
 
   const newRev = {
     id: `rev-${Date.now()}`,
-    userName: req.user?.nama_lengkap || 'Aditya Nugraha',
+    userName: req.user?.nama_lengkap || 'Pengguna',
     rating: Number(rating),
     comment: isi_ulasan.trim(),
     createdAt: new Date().toISOString(),

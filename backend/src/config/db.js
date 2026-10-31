@@ -8,6 +8,17 @@
 
 import './loadEnv.js';
 import pg from 'pg';
+import dotenv from 'dotenv';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// Muat environment baik saat dijalankan dari root maupun folder backend
+dotenv.config();
+dotenv.config({ path: path.resolve(__dirname, '../../../.env') });
+dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 
 const { Pool } = pg;
 
@@ -88,7 +99,6 @@ export async function query(text, params) {
   try {
     return await pool.query(text, params);
   } catch (err) {
-    // Melempar error query Supabase
     throw err;
   }
 }

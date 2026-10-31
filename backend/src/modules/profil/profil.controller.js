@@ -40,24 +40,7 @@ export async function getProfil(req, res) {
     return res.status(500).json({ message: 'Gagal memuat profil pengguna dari Supabase.', error: err.message });
   }
 
-  const user = dbStore.findUserById(idAkun);
-  if (user) {
-    return res.status(200).json({
-      profil_user: {
-        id_akun: user.id_akun,
-        nama_lengkap: user.nama_lengkap,
-        username: user.username || `@${(user.email || 'pengguna').split('@')[0]}`,
-        email: user.email,
-        role: user.role || 'USER',
-        umur: user.umur || 25,
-        lokasi_default: user.lokasi_default || 'Samarinda',
-        kategori_rentan: user.kategori_rentan || 'Umum',
-        peringatan_aqi_100: user.peringatan_aqi_100 ?? false,
-        foto_profil: user.foto_profil || '',
-      },
-    });
-  }
-  return res.status(200).json({ profil_user: null });
+  
 }
 
 export async function updateProfil(req, res) {

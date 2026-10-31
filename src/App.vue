@@ -42,38 +42,82 @@ import { logoutAccount, userProfileStore } from './features/auth/authStore';
 // Setiap halaman memiliki Path/URL mandiri (/map, /community, /profile, dll.)
 // dan TIDAK LAGI me-reset ke menu utama saat di-refresh (F5) atau auto-reload.
 // ============================================================================
+function hasLocalSession() {
+  if (typeof window === 'undefined') return false;
+  try {
+    const raw = localStorage.getItem('polusee_active_user');
+    const token = localStorage.getItem('polusee_jwt_token');
+    if (token) return true;
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed && (parsed.email || parsed.nama_lengkap)) return true;
+    }
+  } catch {}
+  return false;
+}
+
 function parseCurrentUrl() {
-  if (typeof window === 'undefined') return { page: 'home', authPage: null, admin: false };
+  if (typeof window === 'undefined') return { page: 'home', authPage: null, admin: false, target: null };
   const path = window.location.pathname.toLowerCase().replace(/\/$/, '') || '/';
 
-  if (path.startsWith('/admin')) return { page: 'home', authPage: null, admin: true };
-  if (path === '/login') return { page: 'home', authPage: 'login', admin: false };
-  if (path === '/register') return { page: 'home', authPage: 'register', admin: false };
-  if (path === '/forgot-password' || path === '/forgot') return { page: 'home', authPage: 'forgot', admin: false };
-  if (path === '/map' || path === '/peta') return { page: 'map-detail', authPage: null, admin: false };
-  if (path === '/air-detail' || path === '/detail' || path === '/udara') return { page: 'air-detail', authPage: null, admin: false };
-  if (path === '/history' || path === '/riwayat') return { page: 'history-detail', authPage: null, admin: false };
-  if (path === '/health' || path === '/kesehatan') return { page: 'health-detail', authPage: null, admin: false };
-  if (path === '/community' || path === '/komunitas') return { page: 'community', authPage: null, admin: false };
-  if (path === '/profile' || path === '/profil') return { page: 'profile', authPage: null, admin: false };
-  if (path === '/education' || path === '/edukasi') return { page: 'education', authPage: null, admin: false };
+  if (path.startsWith('/admin')) return { page: 'home', authPage: null, admin: true, target: null };
+  if (path === '/login') return { page: 'home', authPage: 'login', admin: false, target: null };
+  if (path === '/register') return { page: 'home', authPage: 'register', admin: false, target: null };
+  if (path === '/forgot-password' || path === '/forgot') return { page: 'home', authPage: 'forgot', admin: false, target: null };
+  if (path === '/map' || path === '/peta') return { page: 'map-detail', authPage: null, admin: false, target: null };
+  if (path === '/air-detail' || path === '/detail' || path === '/udara') return { page: 'air-detail', authPage: null, admin: false, target: null };
+  if (path === '/history' || path === '/riwayat') return { page: 'history-detail', authPage: null, admin: false, target: null };
+  if (path === '/health' || path === '/kesehatan') return { page: 'health-detail', authPage: null, admin: false, target: null };
+
+  const loggedIn = hasLocalSession();
+  if (path === '/community' || path === '/komunitas') {
+    if (!loggedIn) {
+      return { page: 'home', authPage: 'login', admin: false, target: 'community' };
+    }
+    return { page: 'community', authPage: null, admin: false, target: null };
+  }
+  if (path === '/profile' || path === '/profil') {
+    if (!loggedIn) {
+      return { page: 'home', authPage: 'login', admin: false, target: 'profile' };
+    }
+    return { page: 'profile', authPage: null, admin: false, target: null };
+  }
+  if (path === '/education' || path === '/edukasi') return { page: 'education', authPage: null, admin: false, target: null };
 
   // Fallback membaca state tersimpan jika berada di root / namun sedang aktif di suatu halaman
   try {
     const saved = sessionStorage.getItem('polusee_active_route');
     if (saved) {
       const parsed = JSON.parse(saved);
-      if (parsed && (parsed.page || parsed.authPage || parsed.admin)) return parsed;
+      if (parsed && (parsed.page || parsed.authPage || parsed.admin)) {
+        if (!loggedIn && (parsed.page === 'profile' || parsed.page === 'community')) {
+          return { page: 'home', authPage: 'login', admin: false, target: parsed.page };
+        }
+        return parsed;
+      }
     }
   } catch {}
 
-  return { page: 'home', authPage: null, admin: false };
+  return { page: 'home', authPage: null, admin: false, target: null };
 }
 
 const initialRoute = parseCurrentUrl();
 const page = ref(initialRoute.page);
 const admin = ref(initialRoute.admin);
 const authPage = ref(initialRoute.authPage);
+const redirectTarget = ref(initialRoute.target || null);
+
+const isLoggedIn = computed(() => Boolean(userProfileStore.email || userProfileStore.id_akun));
+
+function navigateTo(targetPage) {
+  if ((targetPage === 'profile' || targetPage === 'community') && !isLoggedIn.value) {
+    redirectTarget.value = targetPage;
+    authPage.value = 'login';
+    return;
+  }
+  page.value = targetPage;
+  window.scrollTo(0, 0);
+}
 
 function getRoutePath() {
   if (admin.value) return '/admin';
@@ -112,7 +156,12 @@ function syncUrlWithState(replace = false) {
   } catch {}
 }
 
-watch([page, admin, authPage], () => {
+watch([page, admin, authPage], ([newPage, newAdmin, newAuthPage]) => {
+  if (!newAuthPage && (newPage === 'profile' || newPage === 'community') && !isLoggedIn.value) {
+    redirectTarget.value = newPage;
+    authPage.value = 'login';
+    return;
+  }
   syncUrlWithState();
 });
 
@@ -418,18 +467,43 @@ function handleDeleteReportById(id) {
   reports.value = reports.value.filter((item) => item.id !== id);
 }
 
+async function handleLoginSuccess(payload = {}) {
+  authPage.value = null;
+  if (payload.role === 'ADMIN') {
+    admin.value = true;
+    return;
+  }
+  await fetchGlobalData();
+  const dest = payload.target || redirectTarget.value;
+  redirectTarget.value = null;
+  if (dest) {
+    page.value = dest;
+  } else {
+    page.value = 'home';
+  }
+  window.scrollTo(0, 0);
+}
+
+function handleAuthCancel() {
+  authPage.value = null;
+  redirectTarget.value = null;
+  page.value = 'home';
+  window.scrollTo(0, 0);
+}
+
 function handleLogout() {
   logoutAccount();
   notification.value = false;
   article.value = null;
   report.value = false;
   selectedReport.value = null;
+  redirectTarget.value = null;
+  page.value = 'home';
   authPage.value = 'login';
 }
 
 function goHome() {
-  page.value = 'home';
-  window.scrollTo(0, 0);
+  navigateTo('home');
 }
 
 const navItems = [
@@ -471,10 +545,8 @@ onBeforeUnmount(() => {
     :mode="authPage"
     @admin="admin = true"
     @navigate="authPage = $event"
-    @login="
-      authPage = null;
-      page = 'home';
-    "
+    @cancel="handleAuthCancel"
+    @login="handleLoginSuccess"
   />
   <div v-else class="app-shell">
     <aside class="sidebar">
@@ -482,7 +554,7 @@ onBeforeUnmount(() => {
         class="brand-mark relative"
         href="#"
         aria-label="PoluSee beranda"
-        @click.prevent="page = 'home'"
+        @click.prevent="goHome"
       >
         <AppIcon name="wind" :size="29" />
         <span
@@ -498,7 +570,7 @@ onBeforeUnmount(() => {
           :class="`nav-item ${page === item.id ? 'active' : ''}`"
           :aria-label="item.label"
           :title="item.label"
-          @click="page = item.id"
+          @click="navigateTo(item.id)"
         >
           <AppIcon :name="item.icon" />
           <span>{{ item.label }}</span>
@@ -509,7 +581,7 @@ onBeforeUnmount(() => {
 
     <div class="workspace">
       <header class="topbar">
-        <a class="wordmark" href="#" @click.prevent="page = 'home'">
+        <a class="wordmark" href="#" @click.prevent="goHome">
           Polu<span>See</span><span class="brand-dot" />
         </a>
         <span class="header-tag">UDARA LEBIH BAIK, HIDUP LEBIH BAIK · LIVE IQAIR</span>
@@ -606,10 +678,7 @@ onBeforeUnmount(() => {
           :aqi="aqi"
           :health-data="healthData"
           @back="goHome"
-          @profile="
-            page = 'profile';
-            window.scrollTo(0, 0);
-          "
+          @profile="navigateTo('profile')"
         />
         <AirQualityDetail
           v-else-if="page === 'air-detail'"
@@ -713,7 +782,7 @@ onBeforeUnmount(() => {
                   page = 'health-detail';
                   window.scrollTo(0, 0);
                 "
-                @open-profile="page = 'profile'"
+                @open-profile="navigateTo('profile')"
               />
             </div>
 

@@ -31,6 +31,38 @@
       "kategori_rentan": "Umum",
       "peringatan_aqi_100": true,
       "foto_profil": ""
+    },
+    {
+      "id_akun": "9494414e-b5c2-4dbf-a4f3-74b9855170ae",
+      "nama_lengkap": "Zulfa Almajid",
+      "username": "@localhost.recliner886",
+      "email": "localhost.recliner886@passinbox.com",
+      "password_hash": "$2a$10$HcA4OYsfrhFKkenfseP9HOA4bawm8cUNnZ7VWZKe2z6w4d/9KT/Ee",
+      "role": "USER",
+      "status_aktif": true,
+      "umur": 25,
+      "lokasi_default": "Bandung",
+      "latitude": -0.5022,
+      "longitude": 117.1536,
+      "kategori_rentan": "Umum",
+      "peringatan_aqi_100": true,
+      "foto_profil": ""
+    },
+    {
+      "id_akun": "357e2325-c826-4b92-94e9-28c8ac95abad",
+      "nama_lengkap": "User Baru Test 1908925931",
+      "username": "@testuser_1908925931",
+      "email": "testuser_1908925931@polusee.id",
+      "password_hash": "$2a$10$3gBEQGUPYmengI0O6Xqf.OafqdIrtAODduVRuEabKHoLTagrX75iS",
+      "role": "USER",
+      "status_aktif": true,
+      "umur": 25,
+      "lokasi_default": "Bandung",
+      "latitude": -0.5022,
+      "longitude": 117.1536,
+      "kategori_rentan": "Umum",
+      "peringatan_aqi_100": true,
+      "foto_profil": ""
     }
   ],
   "rekomendasi": [
@@ -80,57 +112,6 @@
       "saran_kelompok_rentan": "Segera cari pertolongan medis bila mengalami sesak napas atau gejala memburuk."
     }
   ],
-  "edukasi": [
-    {
-      "id": "lesson-1",
-      "id_konten": 1,
-      "title": "AQI: membaca angka, memahami risiko.",
-      "topic": "Kenali udara",
-      "summary": "AQI menggambarkan tingkat pencemaran udara. Nilai yang lebih tinggi menunjukkan risiko kesehatan yang lebih besar.",
-      "sections": [
-        "AQI menggambarkan tingkat pencemaran udara. Nilai yang lebih tinggi menunjukkan risiko kesehatan yang lebih besar.",
-        "0–50: baik. 51–100: sedang. 101–150: tidak sehat bagi kelompok sensitif. 151–200: tidak sehat. 201–300: sangat tidak sehat. Di atas 300: berbahaya.",
-        "Pantau informasi dari stasiun pemantau resmi terdekat. Kondisi dapat berubah sepanjang hari; sesuaikan aktivitas dengan angka terbaru."
-      ],
-      "audience": "Semua orang",
-      "minutes": 3,
-      "views": 1240,
-      "cover": "https://images.unsplash.com/photo-1534088568595-a066f410bcda?auto=format&fit=crop&w=1200&q=85",
-      "reviews": []
-    },
-    {
-      "id": "lesson-2",
-      "id_konten": 2,
-      "title": "PM2.5: kecil partikelnya, besar dampaknya.",
-      "topic": "Bahaya polusi",
-      "summary": "PM2.5 adalah partikel berdiameter 2,5 mikrometer atau lebih kecil yang dapat menembus sistem pernapasan terdalam.",
-      "sections": [
-        "PM2.5 adalah partikel berdiameter 2,5 mikrometer atau lebih kecil. Sumbernya antara lain pembakaran bahan bakar, kebakaran, dan proses industri.",
-        "Partikel halus dapat masuk jauh ke paru-paru. Paparan polusi dikaitkan dengan gangguan pernapasan dan penyakit kardiovaskular.",
-        "Kurangi paparan saat udara buruk: batasi aktivitas berat di luar, hindari sumber asap, dan gunakan ruang dengan udara lebih bersih."
-      ],
-      "audience": "Kelompok rentan",
-      "minutes": 4,
-      "views": 980,
-      "cover": "https://images.unsplash.com/photo-1508873696983-2df5293cb32f?auto=format&fit=crop&w=1200&q=85",
-      "reviews": []
-    },
-    {
-      "id": "lesson-3",
-      "id_konten": 3,
-      "title": "Memilih masker yang benar-benar melindungi.",
-      "topic": "Perlindungan diri",
-      "summary": "Respirator N95/KN95 memberi perlindungan lebih baik dibanding masker kain terhadap partikel halus polusi.",
-      "sections": [
-        "Respirator N95 yang sesuai dan terpasang rapat dapat membantu mengurangi partikel yang terhirup. Masker kain tidak memberi perlindungan setara terhadap partikel halus.",
-        "Tutup hidung dan mulut, sesuaikan penjepit hidung, dan periksa celah di tepi masker. Ganti jika rusak, kotor, atau sulit digunakan untuk bernapas."
-      ],
-      "audience": "Pengguna jalan & komuter",
-      "minutes": 2,
-      "views": 1530,
-      "cover": "https://images.unsplash.com/photo-1584634731339-252c581abfc5?auto=format&fit=crop&w=1200&q=85",
-      "reviews": []
-    }
-  ],
+  "edukasi": [],
   "laporan": []
 }

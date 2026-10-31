@@ -15,7 +15,7 @@ const props = defineProps({
   },
 });
 
-const emit = defineEmits(['navigate', 'login', 'admin']);
+const emit = defineEmits(['navigate', 'login', 'admin', 'cancel']);
 
 const registering = computed(() => props.mode === 'register');
 const error = ref('');
@@ -68,18 +68,14 @@ async function handleSubmit() {
         confirmPassword: confirmPasswordInput.value,
         lokasi_default: cityInput.value || 'Samarinda',
       });
-      emit('navigate', 'login');
-      visible.value = false;
-      passwordInput.value = '';
-      confirmPasswordInput.value = '';
-      notice.value =
-        'Akun baru berhasil didaftarkan! Silakan masuk dengan email dan kata sandi Anda.';
+      // Langsung auto-login dan arahkan ke profil pengguna baru
+      emit('login', { target: 'profile', isNewUser: true });
     } else {
       const result = await loginAccount(emailInput.value, passwordInput.value);
       if (result.role === 'ADMIN') {
         emit('admin');
       } else {
-        emit('login');
+        emit('login', { role: result.role });
       }
     }
   } catch (err) {
@@ -92,11 +88,18 @@ async function handleSubmit() {
 
 <template>
   <div class="auth-shell">
-    <header class="auth-header">
-      <div class="wordmark">
+    <header class="auth-header flex items-center justify-between">
+      <a href="#" class="wordmark cursor-pointer" @click.prevent="emit('cancel')">
         Polu<span>See</span><span class="brand-dot" />
-      </div>
-      <span class="eyebrow">LEBIH SADAR UDARA. LEBIH PEDULI SESAMA.</span>
+      </a>
+      <button
+        type="button"
+        class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[#aeb9ae] bg-white text-[#285765] text-xs font-semibold hover:border-[#285765] hover:bg-[#285765]/5 transition cursor-pointer"
+        title="Kembali ke Beranda publik"
+        @click="emit('cancel')"
+      >
+        ← Kembali ke Beranda
+      </button>
     </header>
     <main class="auth-main">
       <section class="auth-story">

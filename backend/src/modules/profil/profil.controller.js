@@ -25,14 +25,38 @@ export async function getProfil(req, res) {
     );
 
     if (result && result.rows.length > 0) {
-      return res.status(200).json({ profil_user: result.rows[0] });
+      const row = result.rows[0];
+      return res.status(200).json({
+        profil_user: {
+          ...row,
+          username: row.username || `@${(row.email || 'pengguna').split('@')[0]}`,
+          umur: row.umur || 25,
+          peringatan_aqi_100: row.peringatan_aqi_100 ?? false,
+        },
+      });
     }
   } catch {
     // Gunakan dbStore
   }
 
   const user = dbStore.findUserById(idAkun);
-  return res.status(200).json({ profil_user: user || null });
+  if (user) {
+    return res.status(200).json({
+      profil_user: {
+        id_akun: user.id_akun,
+        nama_lengkap: user.nama_lengkap,
+        username: user.username || `@${(user.email || 'pengguna').split('@')[0]}`,
+        email: user.email,
+        role: user.role || 'USER',
+        umur: user.umur || 25,
+        lokasi_default: user.lokasi_default || 'Samarinda',
+        kategori_rentan: user.kategori_rentan || 'Umum',
+        peringatan_aqi_100: user.peringatan_aqi_100 ?? false,
+        foto_profil: user.foto_profil || '',
+      },
+    });
+  }
+  return res.status(200).json({ profil_user: null });
 }
 
 export async function updateProfil(req, res) {

@@ -11,10 +11,10 @@ import AppIcon from '../../components/common/AppIcon.vue';
 import { initialReports } from '../community/communityData';
 import { userProfileStore, updateProfileData } from '../auth/authStore';
 
-defineProps({
+const props = defineProps({
   reports: {
     type: Array,
-    required: true,
+    default: () => [],
   },
   personalized: {
     type: Boolean,
@@ -57,12 +57,14 @@ function isNewReport(id) {
 }
 
 const myReports = computed(() => {
+  const reportsList = Array.isArray(props.reports) ? props.reports : [];
   if (!userProfileStore.email && !userProfileStore.nama_lengkap) return [];
   const currentName = (userProfileStore.nama_lengkap || '').trim().toLowerCase();
   const currentEmail = (userProfileStore.email || '').trim().toLowerCase();
   const currentUsername = (userProfileStore.username || '').trim().toLowerCase();
 
-  return props.reports.filter((entry) => {
+  return reportsList.filter((entry) => {
+    if (!entry) return false;
     const author = (entry.author || '').trim().toLowerCase();
     const user = (entry.user || '').trim().toLowerCase();
     const email = (entry.email || '').trim().toLowerCase();

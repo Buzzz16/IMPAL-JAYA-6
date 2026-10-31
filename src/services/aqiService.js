@@ -88,7 +88,7 @@ export async function getRealtimeAqiData(city = 'Samarinda', lat = null, lon = n
   }
 
   // Fallback cerdas jika koneksi backend offline
-  const baseAqi = city === 'Samarinda' ? 74 : city === 'Balikpapan' ? 167 : city === 'Jakarta' ? 158 : 138;
+  const baseAqi = city === 'Samarinda' ? 112 : city === 'Balikpapan' ? 167 : city === 'Jakarta' ? 158 : 138;
   const defaults = getDefaultPollutants(city);
   const fallbackWeather = {
     temperature: 32,

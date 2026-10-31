@@ -166,11 +166,12 @@ function handlePopState() {
   admin.value = current.admin;
   authPage.value = current.authPage;
 }
-const city = ref('Samarinda');
+const savedCity = typeof localStorage !== 'undefined' ? (localStorage.getItem('polusee_selected_city') || userProfileStore.lokasi_default || 'Samarinda') : 'Samarinda';
+const city = ref(savedCity);
 const period = ref('24 jam');
 const notification = ref(false);
 const article = ref(null);
-const point = ref('Samarinda Kota');
+const point = ref(savedCity + ' Kota');
 const zoom = ref(1);
 const personalized = ref(false);
 const report = ref(false);
@@ -213,7 +214,7 @@ const userDeviceLocation = ref(null); // { lat, lon, accuracy }
 const isLiveTracking = ref(true); // Default true: Lokasi default adalah posisi map device dijalankan
 let geolocationWatchId = null;
 
-const aqi = computed(() => realtimeData.value?.aqi ?? 74);
+const aqi = computed(() => realtimeData.value?.aqi ?? null);
 const pm25 = computed(() => realtimeData.value?.pm25 ?? 23.0);
 const updatedAt = computed(() => realtimeData.value?.updatedAt ?? '11.00 WITA');
 const cityProvince = computed(
@@ -268,7 +269,7 @@ async function fetchCityData(cityName = city.value, lat = null, lon = null) {
     }
 
     // Rekomendasi kesehatan dinamis dari backend rule-engine
-    const curAqi = realtimeData.value?.aqi || 74;
+    const curAqi = realtimeData.value?.aqi || 100;
     const recRes = await getHealthRecommendationData(
       curAqi,
       userProfileStore.kategori_rentan || 'Umum'
@@ -308,6 +309,20 @@ async function initLiveLocationTracking() {
         const nearest = findNearestSupportedCity(lat, lon);
         if (nearest) {
           city.value = nearest;
+          point.value = nearest + ' Kota';
+          try { localStorage.setItem('polusee_selected_city', nearest); } catch {}
+
+          // Otomatis update lokasi default user ke Supabase
+          if (userProfileStore.id_akun) {
+            userProfileStore.lokasi_default = nearest;
+            updateProfileData({
+              lokasi_default: nearest,
+              latitude: lat,
+              longitude: lon,
+            }).then(() => {
+              console.log('[Supabase GPS Sync]: Lokasi tersimpan ke Supabase:', nearest);
+            }).catch(e => console.warn(e));
+          }
         }
 
         await fetchCityData(city.value, lat, lon);

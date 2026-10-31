@@ -8,7 +8,7 @@
 -- 1. Seed Akun User & Admin (Password default: password123 -> bcrypt hash)
 INSERT INTO akun (id_akun, nama_lengkap, email, password_hash, role, status_aktif)
 VALUES
-  ('11111111-1111-1111-1111-111111111111', 'Aditya Nugraha', 'aditya@polusee.id', '$2a$10$CwTycUXWue0Thq9StjUM0uJ8p7R8iH6G8Z1eQ5zR3V6aP0wK9vX2W', 'USER', TRUE),
+  ('11111111-1111-1111-1111-111111111111', 'Pengguna PoluSee', 'user@polusee.id', '$2a$10$CwTycUXWue0Thq9StjUM0uJ8p7R8iH6G8Z1eQ5zR3V6aP0wK9vX2W', 'USER', TRUE),
   ('22222222-2222-2222-2222-222222222222', 'Admin PoluSee', 'admin@polusee.id', '$2a$10$CwTycUXWue0Thq9StjUM0uJ8p7R8iH6G8Z1eQ5zR3V6aP0wK9vX2W', 'ADMIN', TRUE)
 ON CONFLICT (email) DO NOTHING;
 

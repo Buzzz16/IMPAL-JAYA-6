@@ -34,9 +34,9 @@ const INITIAL_DATA = {
     },
     {
       id_akun: '11111111-1111-1111-1111-111111111112',
-      nama_lengkap: 'Aditya Nugraha',
-      username: '@adityanugraha',
-      email: 'aditya@polusee.id',
+      nama_lengkap: 'Pengguna PoluSee',
+      username: '@userpolusee',
+      email: 'user@polusee.id',
       password_hash: '$2a$10$pZEMX.ept7/tiCTYhVTXmelsXkh6TKftgAOnYV8fQFv.ELPkCmx2e', // user123 & password123
       role: 'USER',
       status_aktif: true,

@@ -18,9 +18,7 @@
  * ============================================================================
  */
 
-import dotenv from 'dotenv';
-
-dotenv.config();
+import './loadEnv.js';
 
 export const BACKEND_EXTERNAL_API = {
   IQAIR: {

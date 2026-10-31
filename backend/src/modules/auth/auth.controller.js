@@ -229,3 +229,79 @@ export async function register(req, res) {
       .json({ message: 'Gagal melakukan registrasi akun.', error: err.message });
   }
 }
+
+// UC-03: Lupa Kata Sandi & Atur Ulang Sandi
+export async function forgotPassword(req, res) {
+  try {
+    const { email, password, newPassword, confirmPassword } = req.body;
+    const targetPassword = (newPassword || password || '').trim();
+
+    if (!email) {
+      return res.status(400).json({ message: 'Email terdaftar wajib diisi.' });
+    }
+    if (!targetPassword) {
+      return res.status(400).json({ message: 'Kata sandi baru wajib diisi.' });
+    }
+    if (confirmPassword && targetPassword !== confirmPassword.trim()) {
+      return res.status(400).json({ message: 'Konfirmasi kata sandi tidak cocok.' });
+    }
+    if (targetPassword.length < 6) {
+      return res.status(400).json({ message: 'Kata sandi baru minimal 6 karakter.' });
+    }
+
+    const cleanEmail = String(email).trim().toLowerCase();
+    let account = null;
+
+    try {
+      const result = await query(
+        `SELECT a.id_akun, a.email FROM akun a WHERE LOWER(TRIM(a.email)) = $1`,
+        [cleanEmail]
+      );
+      if (result && result.rows.length > 0) {
+        account = result.rows[0];
+      }
+    } catch {
+      // Gunakan dbStore
+    }
+
+    if (!account) {
+      account = dbStore.findUserByEmail(cleanEmail);
+    }
+
+    // Dukung alias email default
+    if (!account) {
+      if (cleanEmail === 'admin' || cleanEmail.startsWith('admin@')) {
+        account = dbStore.findUserByEmail('admin@polusee.id');
+      } else if (cleanEmail === 'user' || cleanEmail.startsWith('user@')) {
+        account = dbStore.findUserByEmail('user@polusee.id');
+      }
+    }
+
+    if (!account) {
+      return res.status(404).json({ message: 'Akun dengan email tersebut tidak ditemukan.' });
+    }
+
+    const passwordHash = await bcrypt.hash(targetPassword, 10);
+
+    try {
+      await query(
+        `UPDATE akun SET password_hash = $1, updated_at = CURRENT_TIMESTAMP WHERE id_akun = $2`,
+        [passwordHash, account.id_akun]
+      );
+    } catch {
+      // Selesai
+    }
+
+    dbStore.updateUser(account.id_akun, { password_hash: passwordHash });
+
+    return res.status(200).json({
+      success: true,
+      message: 'Kata sandi berhasil diperbarui! Silakan masuk dengan kata sandi baru Anda.',
+    });
+  } catch (err) {
+    return res.status(500).json({
+      message: 'Gagal mengatur ulang kata sandi.',
+      error: err.message,
+    });
+  }
+}

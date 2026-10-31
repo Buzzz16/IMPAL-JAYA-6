@@ -1,11 +1,12 @@
 /**
  * ============================================================================
- * KONFIGURASI KONEKSI DATABASE POSTGRESQL (CONNECTION POOL)
+ * KONFIGURASI KONEKSI DATABASE POSTGRESQL / SUPABASE (CONNECTION POOL)
  * File: backend/src/config/db.js
  * Mengacu pada: Bab 2.4, Bab 4.3, & Lampiran B SKPL-1000 Revisi C
  * ============================================================================
  */
 
+import './loadEnv.js';
 import pg from 'pg';
 import dotenv from 'dotenv';
 import path from 'node:path';
@@ -21,42 +22,77 @@ dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 
 const { Pool } = pg;
 
-const connectionString = process.env.DATABASE_URL;
-const isSupabase = Boolean(connectionString && connectionString.includes('supabase'));
+const rawDbUrl = process.env.DATABASE_URL?.trim();
+const isPlaceholderUrl = !rawDbUrl || rawDbUrl.includes('PASSWORD_ANDA') || rawDbUrl.includes('PROJECT_REF');
 
-export const pool = new Pool(
-  connectionString
-    ? {
-        connectionString,
-        ssl: isSupabase || process.env.DB_SSL === 'true' ? { rejectUnauthorized: false } : false,
-        max: 20,
-        idleTimeoutMillis: 30000,
-        connectionTimeoutMillis: 10000,
-      }
-    : {
-        host: process.env.DB_HOST || 'localhost',
-        port: parseInt(process.env.DB_PORT || '5432', 10),
-        database: process.env.DB_NAME || 'polusee_db',
-        user: process.env.DB_USER || 'postgres',
-        password: process.env.DB_PASSWORD || 'postgres',
-        ssl: process.env.DB_SSL === 'true' ? { rejectUnauthorized: false } : false,
-        max: 20,
-        idleTimeoutMillis: 30000,
-        connectionTimeoutMillis: 2000,
-      }
-);
+// Deteksi apakah menggunakan Supabase / Cloud Database yang butuh SSL
+const isSupabase =
+  Boolean(!isPlaceholderUrl && rawDbUrl && rawDbUrl.includes('supabase')) ||
+  Boolean(process.env.DB_HOST && process.env.DB_HOST.includes('supabase')) ||
+  process.env.DB_SSL === 'true';
+
+const poolConfig = (!isPlaceholderUrl && rawDbUrl)
+  ? {
+    connectionString: rawDbUrl,
+    ssl: isSupabase ? { rejectUnauthorized: false } : false,
+  }
+  : {
+    host: process.env.DB_HOST || 'localhost',
+    port: parseInt(process.env.DB_PORT || '5432', 10),
+    database: process.env.DB_NAME || 'postgres',
+    user: process.env.DB_USER || 'postgres',
+    password: process.env.DB_PASSWORD || 'postgres',
+    ssl: isSupabase ? { rejectUnauthorized: false } : false,
+  };
+
+export const pool = new Pool({
+  ...poolConfig,
+  max: 20,
+  idleTimeoutMillis: 30000,
+  connectionTimeoutMillis: 10000,
+});
 
 pool.on('error', (err) => {
   console.warn('[PostgreSQL Pool Warning]:', err.message);
 });
 
-// Verifikasi koneksi awal ke basis data
-pool.query('SELECT 1')
-  .then(() => {
-    console.log(`[PostgreSQL DB] Berhasil terhubung ke basis data ${isSupabase ? 'Supabase Cloud PostgreSQL' : 'PostgreSQL'}.`);
+// Tes koneksi database di awal secara ramah & inisialisasi kolom like & tabel komentar
+export async function ensureTablesExist() {
+  try {
+    await pool.query(`
+      ALTER TABLE post_komunitas 
+        ADD COLUMN IF NOT EXISTS jumlah_like INTEGER NOT NULL DEFAULT 0,
+        ADD COLUMN IF NOT EXISTS liked_by TEXT[] NOT NULL DEFAULT '{}';
+
+      DROP TABLE IF EXISTS like_post CASCADE;
+
+      CREATE TABLE IF NOT EXISTS komentar_post (
+        id_komentar SERIAL PRIMARY KEY,
+        id_post INTEGER NOT NULL REFERENCES post_komunitas(id_post) ON DELETE CASCADE,
+        id_user UUID REFERENCES users(id_akun) ON DELETE SET NULL,
+        nama_pengguna VARCHAR(100),
+        isi_komentar TEXT NOT NULL,
+        created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+      CREATE INDEX IF NOT EXISTS idx_komentar_post_id ON komentar_post (id_post);
+    `);
+  } catch (err) {
+    console.warn('[Database Schema Warning]:', err.message);
+  }
+}
+
+pool
+  .query('SELECT NOW()')
+  .then(async () => {
+    console.log(
+      `[Database Connected]: Terhubung ke PostgreSQL ${isSupabase ? '(Supabase Cloud)' : '(Local)'}`
+    );
+    await ensureTablesExist();
   })
   .catch((err) => {
-    console.warn('[PostgreSQL DB] Koneksi basis data gagal, beralih ke penyimpanan lokal (dbStore):', err.message);
+    console.log(
+      `[Database Fallback]: Belum terhubung ke PostgreSQL (${err.message}). Menggunakan In-Memory dbStore sebagai cadangan.`
+    );
   });
 
 export async function query(text, params) {
@@ -66,4 +102,3 @@ export async function query(text, params) {
     throw err;
   }
 }
-

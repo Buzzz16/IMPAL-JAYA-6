@@ -122,6 +122,8 @@ CREATE TABLE post_komunitas (
     judul_post VARCHAR(150) NOT NULL,
     isi_konten TEXT NOT NULL,
     media_lampiran VARCHAR(255),
+    jumlah_like INTEGER NOT NULL DEFAULT 0,
+    liked_by TEXT[] NOT NULL DEFAULT '{}',
     status_moderasi status_moderasi_enum NOT NULL DEFAULT 'AKTIF',
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
@@ -141,3 +143,15 @@ CREATE TABLE laporan_polusi (
     status_verifikasi status_verifikasi_enum NOT NULL DEFAULT 'PENDING',
     waktu_lapor TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+
+-- 10. Tabel Entitas: komentar_post (Komentar pada Post Komunitas / Laporan)
+CREATE TABLE komentar_post (
+    id_komentar SERIAL PRIMARY KEY,
+    id_post INTEGER NOT NULL REFERENCES post_komunitas(id_post) ON DELETE CASCADE,
+    id_user UUID REFERENCES users(id_akun) ON DELETE SET NULL,
+    nama_pengguna VARCHAR(100),
+    isi_komentar TEXT NOT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_komentar_post_id ON komentar_post (id_post);
+

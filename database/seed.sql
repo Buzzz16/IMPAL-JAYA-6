@@ -5,11 +5,17 @@
 --   psql -U postgres -d polusee_db -f database/seed.sql
 -- ============================================================================
 
--- 1. Seed Akun Admin (Password default: password123 / admin123 -> bcrypt hash)
+-- 1. Seed Akun User & Admin (Password default: password123 -> bcrypt hash)
 INSERT INTO akun (id_akun, nama_lengkap, email, password_hash, role, status_aktif)
 VALUES
+  ('11111111-1111-1111-1111-111111111111', 'Pengguna PoluSee', 'user@polusee.id', '$2a$10$CwTycUXWue0Thq9StjUM0uJ8p7R8iH6G8Z1eQ5zR3V6aP0wK9vX2W', 'USER', TRUE),
   ('22222222-2222-2222-2222-222222222222', 'Admin PoluSee', 'admin@polusee.id', '$2a$10$CwTycUXWue0Thq9StjUM0uJ8p7R8iH6G8Z1eQ5zR3V6aP0wK9vX2W', 'ADMIN', TRUE)
 ON CONFLICT (email) DO NOTHING;
+
+INSERT INTO users (id_akun, lokasi_default, latitude, longitude, kategori_rentan, foto_profil)
+VALUES
+  ('11111111-1111-1111-1111-111111111111', 'Samarinda', -0.502200, 117.153600, 'Umum', 'https://images.unsplash.com/photo-1630678334641-0c5339dfd1a7?auto=format&fit=crop&w=500&q=85')
+ON CONFLICT (id_akun) DO NOTHING;
 
 INSERT INTO admins (id_akun, nip_admin, departemen)
 VALUES
@@ -40,3 +46,18 @@ VALUES
   ('PM2.5: kecil partikelnya, besar dampaknya.', 'Bahaya polusi', 'PM2.5 adalah partikel berdiameter 2,5 mikrometer atau lebih kecil. Sumbernya antara lain pembakaran bahan bakar, kebakaran, dan proses industri.\n\nPartikel halus dapat masuk jauh ke paru-paru. Paparan polusi dikaitkan dengan gangguan pernapasan dan penyakit kardiovaskular.\n\nKurangi paparan saat udara buruk: batasi aktivitas berat di luar, hindari sumber asap, dan gunakan ruang dengan udara lebih bersih.', '', 'PUBLISHED', '22222222-2222-2222-2222-222222222222'),
   ('Memilih masker yang benar-benar melindungi.', 'Perlindungan diri', 'Respirator N95 yang sesuai dan terpasang rapat dapat membantu mengurangi partikel yang terhirup. Masker kain tidak memberi perlindungan setara terhadap partikel halus.\n\nTutup hidung dan mulut, sesuaikan penjepit hidung, dan periksa celah di tepi masker. Ganti jika rusak, kotor, atau sulit digunakan untuk bernapas.', '', 'PUBLISHED', '22222222-2222-2222-2222-222222222222');
 
+-- 5. Seed Ulasan Edukasi
+INSERT INTO ulasan_edukasi (id_konten, id_user, isi_ulasan, rating, is_edited)
+VALUES
+  (1, '11111111-1111-1111-1111-111111111111', 'Penjelasan rentang angka AQI sangat mudah dipahami untuk memantau udara harian di Samarinda.', 5, FALSE);
+
+-- 6. Seed Post Komunitas & Laporan Polusi
+INSERT INTO post_komunitas (id_user, judul_post, isi_konten, media_lampiran, status_moderasi)
+VALUES
+  ('11111111-1111-1111-1111-111111111111', 'Asap pembakaran sampah di sekitar Sungai Karang Mumus', 'Asap pembakaran sampah di sekitar Sungai Karang Mumus', 'https://images.unsplash.com/photo-1555066657-4ea53882eaba?auto=format&fit=crop&w=1200&q=85', 'AKTIF'),
+  ('11111111-1111-1111-1111-111111111111', 'Udara pagi di area taman terasa lebih segar', 'Udara pagi di area taman terasa lebih segar', 'https://images.unsplash.com/photo-1527965408463-82ae0731825c?auto=format&fit=crop&w=1200&q=85', 'AKTIF');
+
+INSERT INTO laporan_polusi (nomor_tiket, id_post, id_user, kategori_polusi, deskripsi_kejadian, alamat_lokasi, latitude, longitude, url_foto_bukti, status_verifikasi)
+VALUES
+  ('POL-2025-1041', 1, '11111111-1111-1111-1111-111111111111', 'Pembakaran sampah', 'Asap pembakaran sampah di sekitar Sungai Karang Mumus', 'Sungai Karang Mumus, Samarinda', -0.494800, 117.156200, 'https://images.unsplash.com/photo-1555066657-4ea53882eaba?auto=format&fit=crop&w=1200&q=85', 'TERVERIFIKASI'),
+  ('POL-2025-1042', 2, '11111111-1111-1111-1111-111111111111', 'Kondisi Udara', 'Udara pagi di area taman terasa lebih segar', 'Taman kota, Samarinda', -0.502200, 117.153600, 'https://images.unsplash.com/photo-1527965408463-82ae0731825c?auto=format&fit=crop&w=1200&q=85', 'TERVERIFIKASI');

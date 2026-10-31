@@ -9,7 +9,7 @@
  */
 import { ref, reactive, onMounted, onBeforeUnmount } from 'vue';
 import { detectUserLocationViaOpenStreetMap } from '../../services/osmMapService';
-import { apiRequest } from '../../services/apiClient';
+import { apiRequest, togglePostLikeApi, addPostCommentApi } from '../../services/apiClient';
 import { userProfileStore } from '../auth/authStore';
 import AppIcon from '../../components/common/AppIcon.vue';
 
@@ -85,27 +85,51 @@ function handleBackdropClick(event) {
   }
 }
 
-function handleImageChange(event) {
+function compressImage(file, maxWidth = 1000, quality = 0.72) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = reject;
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onerror = reject;
+      img.onload = () => {
+        let width = img.width;
+        let height = img.height;
+        if (width > maxWidth) {
+          height = Math.round((height * maxWidth) / width);
+          width = maxWidth;
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, width, height);
+        resolve(canvas.toDataURL('image/jpeg', quality));
+      };
+      img.src = String(e.target?.result || '');
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+async function handleImageChange(event) {
   const file = event.target.files?.[0];
   if (!file) return;
-  if (!['image/jpeg', 'image/png'].includes(file.type) || file.size > 10 * 1024 * 1024) {
-    error.value = 'Pilih JPG atau PNG, maksimal 10 MB.';
+  if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type) || file.size > 10 * 1024 * 1024) {
+    error.value = 'Pilih JPG, PNG, atau WebP, maksimal 10 MB.';
     return;
   }
   error.value = '';
   loading.value = true;
-  const reader = new FileReader();
-  reader.onload = () => {
-    const dataUri = String(reader.result);
-    draft.image = dataUri;
-    draft.photo = dataUri;
+  try {
+    const compressedUri = await compressImage(file, 1000, 0.72);
+    draft.image = compressedUri;
+    draft.photo = compressedUri;
+  } catch {
+    error.value = 'Gambar gagal diproses. Silakan coba kembali.';
+  } finally {
     loading.value = false;
-  };
-  reader.onerror = () => {
-    error.value = 'Gambar gagal dibaca. Silakan coba kembali.';
-    loading.value = false;
-  };
-  reader.readAsDataURL(file);
+  }
 }
 
 // [EXTERNAL API] Deteksi titik lokasi otomatis via HTML5 Geolocation + OpenStreetMap Nominatim API
@@ -140,18 +164,25 @@ async function handleSaveReport() {
     url_foto_bukti: img,
   };
 
+  let savedData = updated;
   try {
     if (props.creating) {
-      await apiRequest('/komunitas/lapor', {
+      const res = await apiRequest('/komunitas/lapor', {
         method: 'POST',
         body: JSON.stringify(updated),
       });
+      if (res && (res.laporan || res.report)) {
+        savedData = {
+          ...updated,
+          ...(res.laporan || res.report),
+        };
+      }
     }
   } catch {
     // Tetap disimpan ke state lokal apabila server backend belum dinyalakan
   }
 
-  emit('save', updated);
+  emit('save', savedData);
   if (props.creating) {
     emit('close');
   } else {
@@ -159,26 +190,69 @@ async function handleSaveReport() {
   }
 }
 
-function handleToggleLike() {
+async function handleToggleLike() {
+  const currentLiked = props.report.liked;
+  const currentLikes = props.report.likes || 0;
   const updated = {
     ...props.report,
-    liked: !props.report.liked,
-    likes: (props.report.likes || 0) + (props.report.liked ? -1 : 1),
+    liked: !currentLiked,
+    likes: currentLikes + (currentLiked ? -1 : 1),
   };
   emit('save', updated);
+
+  try {
+    const res = await togglePostLikeApi(props.report.id_post || props.report.id);
+    if (res && res.success) {
+      emit('save', {
+        ...props.report,
+        liked: res.liked,
+        likes: res.likes,
+      });
+    }
+  } catch (err) {
+    console.warn('Gagal sinkron like ke database Supabase:', err);
+  }
 }
 
-function handleAddComment() {
+async function handleAddComment() {
   if (!comment.value.trim()) return;
+  const newText = comment.value.trim();
+  const authorName = userProfileStore.nama_lengkap || userProfileStore.username || 'Pengguna';
+
+  const optimisticComment = {
+    id: `temp-${Date.now()}`,
+    name: authorName,
+    author: authorName,
+    text: newText,
+    time: 'Baru saja',
+  };
+
   const updated = {
     ...props.report,
-    comments: [
-      ...(props.report.comments || []),
-      { name: userProfileStore.username || userProfileStore.nama_lengkap || 'Pengguna', text: comment.value.trim() },
-    ],
+    comments: [...(props.report.comments || []), optimisticComment],
   };
   emit('save', updated);
   comment.value = '';
+
+  try {
+    const res = await addPostCommentApi(props.report.id_post || props.report.id, newText, authorName);
+    if (res && res.comments) {
+      emit('save', {
+        ...props.report,
+        comments: res.comments,
+      });
+    }
+  } catch (err) {
+    console.warn('Gagal sinkron komentar ke database Supabase:', err);
+  }
+}
+
+function getAuthorInitials(name = '') {
+  const parts = String(name).trim().split(/\s+/);
+  if (parts.length >= 2) {
+    return (parts[0][0] + parts[1][0]).toUpperCase();
+  }
+  return String(name).slice(0, 2).toUpperCase() || 'P';
 }
 
 const conditionMap = {
@@ -388,14 +462,14 @@ const conditionMap = {
         </div>
         <div class="report-detail-info">
           <div class="report-author">
-            <span class="avatar">{{ (report.author || 'Pengguna').slice(0, 2).toUpperCase() }}</span>
+            <span class="avatar">{{ getAuthorInitials(report.author || userProfileStore.nama_lengkap || 'Pengguna') }}</span>
             <div>
-              <strong>{{ report.author || 'Pengguna PoluSee' }}</strong>
+              <strong>{{ report.author || userProfileStore.nama_lengkap || 'Pengguna' }}</strong>
               <small>{{ report.area }} · {{ report.city }}</small>
             </div>
           </div>
           <p class="report-caption">
-            <strong>{{ report.user || '@pengguna' }}</strong> {{ report.caption }}
+            <strong>{{ report.user || userProfileStore.username || '@pengguna' }}</strong> {{ report.caption }}
           </p>
           <dl class="report-facts">
             <div>

@@ -16,6 +16,40 @@ const DATA_FILE = path.join(__dirname, 'database.json');
 const INITIAL_DATA = {
   users: [
     {
+      id_akun: '11111111-1111-1111-1111-111111111111',
+      nama_lengkap: 'Pengguna PoluSee (User)',
+      username: '@userpolusee',
+      email: 'user@polusee.id',
+      password_hash: '$2a$10$pZEMX.ept7/tiCTYhVTXmelsXkh6TKftgAOnYV8fQFv.ELPkCmx2e', // user123 & password123
+      role: 'USER',
+      status_aktif: true,
+      umur: 28,
+      lokasi_default: 'Samarinda',
+      latitude: -0.5022,
+      longitude: 117.1536,
+      kategori_rentan: 'Umum',
+      peringatan_aqi_100: true,
+      foto_profil:
+        'https://images.unsplash.com/photo-1630678334641-0c5339dfd1a7?auto=format&fit=crop&w=500&q=85',
+    },
+    {
+      id_akun: '11111111-1111-1111-1111-111111111112',
+      nama_lengkap: 'Pengguna PoluSee',
+      username: '@userpolusee',
+      email: 'user@polusee.id',
+      password_hash: '$2a$10$pZEMX.ept7/tiCTYhVTXmelsXkh6TKftgAOnYV8fQFv.ELPkCmx2e', // user123 & password123
+      role: 'USER',
+      status_aktif: true,
+      umur: 28,
+      lokasi_default: 'Samarinda',
+      latitude: -0.5022,
+      longitude: 117.1536,
+      kategori_rentan: 'Umum',
+      peringatan_aqi_100: true,
+      foto_profil:
+        'https://images.unsplash.com/photo-1630678334641-0c5339dfd1a7?auto=format&fit=crop&w=500&q=85',
+    },
+    {
       id_akun: '22222222-2222-2222-2222-222222222222',
       nama_lengkap: 'Admin PoluSee (Pengelola)',
       username: '@adminpolusee',
@@ -95,7 +129,15 @@ const INITIAL_DATA = {
       minutes: 3,
       views: 1240,
       cover: 'https://images.unsplash.com/photo-1534088568595-a066f410bcda?auto=format&fit=crop&w=1200&q=85',
-      reviews: [],
+      reviews: [
+        {
+          id: 'rev-1',
+          userName: 'Warga Peduli',
+          rating: 5,
+          comment: 'Penjelasan rentang angka AQI sangat mudah dipahami untuk memantau udara harian di Samarinda.',
+          createdAt: new Date().toISOString(),
+        },
+      ],
     },
     {
       id: 'lesson-2',
@@ -131,32 +173,74 @@ const INITIAL_DATA = {
       reviews: [],
     },
   ],
-  laporan: [],
+  laporan: [
+    {
+      id: 'rep-001',
+      id_post: 1,
+      ticket: '#TKT-2026-081',
+      author: 'Warga Samarinda',
+      user: '@wargasamarinda',
+      avatar: 'https://images.unsplash.com/photo-1630678334641-0c5339dfd1a7?auto=format&fit=crop&w=500&q=85',
+      city: 'Samarinda',
+      area: 'Sungai Karang Mumus',
+      address: 'Jl. Lambung Mangkurat, Samarinda',
+      condition: 'Asap pembakaran sampah',
+      category: 'Asap & Debu',
+      caption: 'Asap pembakaran sampah pekat di sekitar bantaran sungai mengganggu jarak pandang dan napas warga pagi ini.',
+      time: 'Baru saja',
+      date: new Date().toISOString(),
+      status: 'TERVERIFIKASI',
+      badge: 'TERVERIFIKASI',
+      photo: 'https://images.unsplash.com/photo-1555066657-4ea53882eaba?auto=format&fit=crop&w=1200&q=85',
+      lat: -0.4952,
+      lon: 117.1580,
+      likes: 14,
+      comments: [
+        {
+          id: 'c-1',
+          author: 'Warga Peduli',
+          text: 'Sudah dilaporkan juga ke pihak kelurahan setempat, terima kasih informasinya!',
+          time: '15 menit lalu',
+        },
+      ],
+    },
+    {
+      id: 'rep-002',
+      id_post: 2,
+      ticket: '#TKT-2026-082',
+      author: 'Budi Santoso',
+      user: '@budisantoso',
+      avatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=500&q=85',
+      city: 'Samarinda',
+      area: 'Taman Samarendah',
+      address: 'Kawasan Taman Samarendah, Samarinda Kota',
+      condition: 'Udara bersih & segar',
+      category: 'Kondisi Baik',
+      caption: 'Udara pagi di area taman terasa sejuk dan cocok untuk olahraga santai bersama keluarga.',
+      time: '2 jam lalu',
+      date: new Date(Date.now() - 2 * 3600000).toISOString(),
+      status: 'TERVERIFIKASI',
+      badge: 'TERVERIFIKASI',
+      photo: 'https://images.unsplash.com/photo-1527965408463-82ae0731825c?auto=format&fit=crop&w=1200&q=85',
+      lat: -0.5015,
+      lon: 117.1475,
+      likes: 29,
+      comments: [],
+    },
+  ],
 };
 
 class DataStore {
   constructor() {
-    this.data = this.loadData();
+    this.data = JSON.parse(JSON.stringify(INITIAL_DATA));
   }
 
   loadData() {
-    try {
-      if (fs.existsSync(DATA_FILE)) {
-        const raw = fs.readFileSync(DATA_FILE, 'utf-8');
-        return JSON.parse(raw);
-      }
-    } catch (e) {
-      console.warn('[DataStore] Gagal membaca file data, menggunakan memori:', e.message);
-    }
     return JSON.parse(JSON.stringify(INITIAL_DATA));
   }
 
   saveData() {
-    try {
-      fs.writeFileSync(DATA_FILE, JSON.stringify(this.data, null, 2), 'utf-8');
-    } catch (e) {
-      console.warn('[DataStore] Gagal menyimpan file data:', e.message);
-    }
+    // In-memory only
   }
 
   getUsers() {

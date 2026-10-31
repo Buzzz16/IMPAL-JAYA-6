@@ -26,6 +26,7 @@ export async function getProfil(req, res) {
 
     if (result && result.rows.length > 0) {
       const row = result.rows[0];
+      res.locals.dbLog = 'Data profil pengguna dimuat';
       return res.status(200).json({
         profil_user: {
           ...row,
@@ -64,7 +65,7 @@ export async function updateProfil(req, res) {
   if (!idAkun) {
     return res.status(401).json({ message: 'Silakan login terlebih dahulu untuk memperbarui profil.' });
   }
-  const { nama_lengkap, nama, lokasi_default, kategori_rentan, foto_profil, username, umur, peringatan_aqi_100 } = req.body;
+  const { nama_lengkap, nama, lokasi_default, latitude, longitude, kategori_rentan, foto_profil, username, umur, peringatan_aqi_100 } = req.body;
   const namaBaru = (nama_lengkap || nama || '').trim();
 
   try {
@@ -78,10 +79,19 @@ export async function updateProfil(req, res) {
     await query(
       `UPDATE users
        SET lokasi_default = COALESCE($1, lokasi_default),
-           kategori_rentan = COALESCE($2, kategori_rentan),
-           foto_profil = COALESCE($3, foto_profil)
-       WHERE id_akun = $4`,
-      [lokasi_default || null, kategori_rentan || null, foto_profil || null, idAkun]
+           latitude = COALESCE($2, latitude),
+           longitude = COALESCE($3, longitude),
+           kategori_rentan = COALESCE($4, kategori_rentan),
+           foto_profil = COALESCE($5, foto_profil)
+       WHERE id_akun = $6`,
+      [
+        lokasi_default || null,
+        latitude != null ? Number(latitude) : null,
+        longitude != null ? Number(longitude) : null,
+        kategori_rentan || null,
+        foto_profil || null,
+        idAkun
+      ]
     );
   } catch {
     // Selesai

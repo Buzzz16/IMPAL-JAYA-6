@@ -34,7 +34,7 @@ import {
   getHistoryAqiData,
   getHealthRecommendationData,
 } from './services/aqiService';
-import { apiRequest } from './services/apiClient';
+import { apiRequest, togglePostLikeApi, saveStoredUser, getStoredToken, getStoredUser } from './services/apiClient';
 import { logoutAccount, userProfileStore } from './features/auth/authStore';
 
 // ============================================================================
@@ -42,17 +42,18 @@ import { logoutAccount, userProfileStore } from './features/auth/authStore';
 // Setiap halaman memiliki Path/URL mandiri (/map, /community, /profile, dll.)
 // dan TIDAK LAGI me-reset ke menu utama saat di-refresh (F5) atau auto-reload.
 // ============================================================================
-function hasLocalSession() {
+function isAuthenticated() {
   if (typeof window === 'undefined') return false;
   try {
-    const raw = localStorage.getItem('polusee_active_user');
-    const token = localStorage.getItem('polusee_jwt_token');
-    if (token) return true;
-    if (raw) {
-      const parsed = JSON.parse(raw);
+    if (getStoredToken() || getStoredUser()) return true;
+    const rawUser = localStorage.getItem('polusee_active_user');
+    if (rawUser) {
+      const parsed = JSON.parse(rawUser);
       if (parsed && (parsed.email || parsed.nama_lengkap)) return true;
     }
-  } catch {}
+  } catch {
+    return false;
+  }
   return false;
 }
 
@@ -69,7 +70,7 @@ function parseCurrentUrl() {
   if (path === '/history' || path === '/riwayat') return { page: 'history-detail', authPage: null, admin: false, target: null };
   if (path === '/health' || path === '/kesehatan') return { page: 'health-detail', authPage: null, admin: false, target: null };
 
-  const loggedIn = hasLocalSession();
+  const loggedIn = isAuthenticated();
   if (path === '/community' || path === '/komunitas') {
     if (!loggedIn) {
       return { page: 'home', authPage: 'login', admin: false, target: 'community' };
@@ -134,13 +135,15 @@ function getRoutePath() {
   return '/';
 }
 
+let _suppressHistoryPush = false;
+
 function syncUrlWithState(replace = false) {
   if (typeof window === 'undefined') return;
   const targetPath = getRoutePath();
   const currentPath = window.location.pathname;
 
   if (currentPath !== targetPath) {
-    if (replace) {
+    if (replace || _suppressHistoryPush) {
       window.history.replaceState({ page: page.value, authPage: authPage.value, admin: admin.value }, '', targetPath);
     } else {
       window.history.pushState({ page: page.value, authPage: authPage.value, admin: admin.value }, '', targetPath);
@@ -166,16 +169,43 @@ watch([page, admin, authPage], ([newPage, newAdmin, newAuthPage]) => {
 });
 
 function handlePopState() {
+  // AUTH GUARD: Jika sudah logout, blokir navigasi back/forward ke halaman dalam
+  if (!isAuthenticated()) {
+    _suppressHistoryPush = true;
+    admin.value = false;
+    page.value = 'home';
+
+    const current = parseCurrentUrl();
+    if (current.authPage === 'register' || current.authPage === 'forgot') {
+      authPage.value = current.authPage;
+    } else {
+      authPage.value = 'login';
+    }
+
+    // Timpa riwayat browser saat ini agar back tidak bisa kembali ke halaman sebelumnya
+    if (typeof window !== 'undefined' && window.history) {
+      window.history.replaceState(
+        { page: 'home', authPage: authPage.value, admin: false },
+        '',
+        getRoutePath()
+      );
+    }
+
+    _suppressHistoryPush = false;
+    return;
+  }
+
   const current = parseCurrentUrl();
   page.value = current.page;
   admin.value = current.admin;
   authPage.value = current.authPage;
 }
-const city = ref('Samarinda');
+const savedCity = typeof localStorage !== 'undefined' ? (localStorage.getItem('polusee_selected_city') || userProfileStore.lokasi_default || 'Samarinda') : 'Samarinda';
+const city = ref(savedCity);
 const period = ref('24 jam');
 const notification = ref(false);
 const article = ref(null);
-const point = ref('Samarinda Kota');
+const point = ref(savedCity + ' Kota');
 const zoom = ref(1);
 const personalized = ref(false);
 const report = ref(false);
@@ -188,15 +218,37 @@ const liveStations = ref([]);
 const historyData = ref(null);
 const healthData = ref(null);
 const lessons = ref([...initialLessons]);
-const reports = ref([...initialReports]);
+
+const REPORTS_CACHE_KEY = 'polusee_cached_reports';
+
+function getCachedReports() {
+  try {
+    const raw = localStorage.getItem(REPORTS_CACHE_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveCachedReports(items) {
+  try {
+    if (Array.isArray(items) && items.length > 0) {
+      localStorage.setItem(REPORTS_CACHE_KEY, JSON.stringify(items));
+    }
+  } catch {}
+}
+
+const initialCachedReports = getCachedReports();
+const reports = ref(initialCachedReports);
 const loadingData = ref(false);
+const loadingFeed = ref(initialCachedReports.length === 0);
 
 // Live Device Location Tracking State
 const userDeviceLocation = ref(null); // { lat, lon, accuracy }
 const isLiveTracking = ref(true); // Default true: Lokasi default adalah posisi map device dijalankan
 let geolocationWatchId = null;
 
-const aqi = computed(() => realtimeData.value?.aqi ?? 74);
+const aqi = computed(() => realtimeData.value?.aqi ?? null);
 const pm25 = computed(() => realtimeData.value?.pm25 ?? 23.0);
 const updatedAt = computed(() => realtimeData.value?.updatedAt ?? '11.00 WITA');
 const cityProvince = computed(
@@ -251,7 +303,7 @@ async function fetchCityData(cityName = city.value, lat = null, lon = null) {
     }
 
     // Rekomendasi kesehatan dinamis dari backend rule-engine
-    const curAqi = realtimeData.value?.aqi || 74;
+    const curAqi = realtimeData.value?.aqi || 100;
     const recRes = await getHealthRecommendationData(
       curAqi,
       userProfileStore.kategori_rentan || 'Umum'
@@ -291,6 +343,20 @@ async function initLiveLocationTracking() {
         const nearest = findNearestSupportedCity(lat, lon);
         if (nearest) {
           city.value = nearest;
+          point.value = nearest + ' Kota';
+          try { localStorage.setItem('polusee_selected_city', nearest); } catch {}
+
+          // Otomatis update lokasi default user ke Supabase
+          if (userProfileStore.id_akun) {
+            userProfileStore.lokasi_default = nearest;
+            updateProfileData({
+              lokasi_default: nearest,
+              latitude: lat,
+              longitude: lon,
+            }).then(() => {
+              console.log('[Supabase GPS Sync]: Lokasi tersimpan ke Supabase:', nearest);
+            }).catch(e => console.warn(e));
+          }
         }
 
         await fetchCityData(city.value, lat, lon);
@@ -398,14 +464,18 @@ async function fetchGlobalData() {
               '',
           };
         });
+        saveCachedReports(reports.value);
       }
     }
 
     if (profRes.status === 'fulfilled' && profRes.value?.profil_user) {
       Object.assign(userProfileStore, profRes.value.profil_user);
+      saveStoredUser(userProfileStore);
     }
   } catch (err) {
     console.warn('[PoluSee Frontend] Gagal mengambil data global:', err.message);
+  } finally {
+    loadingFeed.value = false;
   }
 }
 
@@ -438,6 +508,25 @@ function saveReport(updated) {
   reports.value = reports.value.map((item) =>
     item.id === updated.id ? updated : item
   );
+  if (selectedReport.value && selectedReport.value.id === updated.id) {
+    selectedReport.value = updated;
+  }
+}
+
+async function handleToggleLike(updated) {
+  saveReport(updated);
+  try {
+    const res = await togglePostLikeApi(updated.id_post || updated.id);
+    if (res && res.success) {
+      saveReport({
+        ...updated,
+        liked: res.liked,
+        likes: res.likes,
+      });
+    }
+  } catch (err) {
+    console.warn('Gagal sinkron like ke Supabase:', err);
+  }
 }
 
 function handleCreateReportSaved(created) {
@@ -455,6 +544,7 @@ function handleCreateReportSaved(created) {
       '',
   };
   reports.value = [norm, ...reports.value];
+  saveCachedReports(reports.value);
 }
 
 function handleDeleteActiveReport() {
@@ -465,6 +555,7 @@ function handleDeleteActiveReport() {
 
 function handleDeleteReportById(id) {
   reports.value = reports.value.filter((item) => item.id !== id);
+  saveCachedReports(reports.value);
 }
 
 async function handleLoginSuccess(payload = {}) {
@@ -498,8 +589,30 @@ function handleLogout() {
   report.value = false;
   selectedReport.value = null;
   redirectTarget.value = null;
+
+  try {
+    sessionStorage.removeItem('polusee_active_route');
+  } catch {}
+
+  // Suppress pushState dari watcher saat mengubah state logout
+  _suppressHistoryPush = true;
+  admin.value = false;
   page.value = 'home';
   authPage.value = 'login';
+  _suppressHistoryPush = false;
+
+  // Hapus seluruh riwayat navigasi lama dan ganti dengan /login
+  // sehingga tombol Back browser tidak bisa kembali ke halaman dashboard
+  if (typeof window !== 'undefined' && window.history) {
+    const loginState = { page: 'home', authPage: 'login', admin: false };
+    window.history.replaceState(loginState, '', '/login');
+
+    // Tambahkan penanganan 'go' untuk menggantikan entry lama di stack
+    const depth = window.history.length;
+    for (let i = 0; i < depth; i++) {
+      window.history.pushState(loginState, '', '/login');
+    }
+  }
 }
 
 function goHome() {
@@ -808,12 +921,13 @@ onBeforeUnmount(() => {
             v-else
             :reports="reports"
             :city="city"
+            :loading="loadingFeed"
             @create-report="
               createDraft = newReport(city);
               report = true;
             "
             @select-report="selectedReport = $event"
-            @toggle-like="saveReport"
+            @toggle-like="handleToggleLike"
           />
         </template>
 

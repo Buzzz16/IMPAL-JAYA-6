@@ -17,10 +17,11 @@ export async function getDaftarEdukasi(_req, res) {
        ORDER BY published_at DESC`
     );
     if (result && result.rows.length > 0) {
+      res.locals.dbLog = `Ditemukan ${result.rows.length} materi edukasi`;
       return res.status(200).json({ list_konten: result.rows });
     }
-  } catch {
-    // Gunakan dbStore
+  } catch (err) {
+    res.locals.dbLog = `Fallback dbStore (${err.message})`;
   }
   return res.status(200).json({ list_konten: dbStore.getArticles() });
 }

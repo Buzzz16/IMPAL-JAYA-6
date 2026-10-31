@@ -85,12 +85,12 @@ function renderHeatLayer() {
     ? props.stations
     : (CITY_COORDINATES[props.city]?.stations || []).map((s) => ({
         ...s,
-        aqi: 74,
+        aqi: 100,
       }));
 
   list.forEach((st) => {
     if (st.lat == null || st.lon == null) return;
-    const aqiVal = Number(st.aqi || st.value || 74);
+    const aqiVal = Number(st.aqi || st.value || 100);
     const theme = getAqiColor(aqiVal);
 
     // Halo atmosferik luar (dispersi luas)
@@ -132,13 +132,13 @@ function renderStationMarkers() {
     ? props.stations
     : (CITY_COORDINATES[props.city]?.stations || []).map((s) => ({
         ...s,
-        aqi: 74,
+        aqi: 100,
       }));
 
   list.forEach((st) => {
     if (st.lat == null || st.lon == null) return;
     const isSelected = props.selectedStation && st.name === props.selectedStation;
-    const aqiVal = Number(st.aqi || st.value || 74);
+    const aqiVal = Number(st.aqi || st.value || 100);
     const theme = getAqiColor(aqiVal);
 
     const markerHtml = `

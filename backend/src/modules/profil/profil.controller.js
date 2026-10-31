@@ -34,7 +34,7 @@ export async function getProfil(req, res) {
 
 export async function updateProfil(req, res) {
   const idAkun = req.user?.id_akun || '11111111-1111-1111-1111-111111111111';
-  const { nama_lengkap, nama, lokasi_default, kategori_rentan, foto_profil, username, umur, peringatan_aqi_100 } = req.body;
+  const { nama_lengkap, nama, lokasi_default, latitude, longitude, kategori_rentan, foto_profil, username, umur, peringatan_aqi_100 } = req.body;
   const namaBaru = (nama_lengkap || nama || '').trim();
 
   try {
@@ -48,10 +48,19 @@ export async function updateProfil(req, res) {
     await query(
       `UPDATE users
        SET lokasi_default = COALESCE($1, lokasi_default),
-           kategori_rentan = COALESCE($2, kategori_rentan),
-           foto_profil = COALESCE($3, foto_profil)
-       WHERE id_akun = $4`,
-      [lokasi_default || null, kategori_rentan || null, foto_profil || null, idAkun]
+           latitude = COALESCE($2, latitude),
+           longitude = COALESCE($3, longitude),
+           kategori_rentan = COALESCE($4, kategori_rentan),
+           foto_profil = COALESCE($5, foto_profil)
+       WHERE id_akun = $6`,
+      [
+        lokasi_default || null,
+        latitude != null ? Number(latitude) : null,
+        longitude != null ? Number(longitude) : null,
+        kategori_rentan || null,
+        foto_profil || null,
+        idAkun
+      ]
     );
   } catch {
     // Selesai

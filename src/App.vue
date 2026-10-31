@@ -34,7 +34,7 @@ import {
   getHistoryAqiData,
   getHealthRecommendationData,
 } from './services/aqiService';
-import { apiRequest, togglePostLikeApi } from './services/apiClient';
+import { apiRequest, togglePostLikeApi, saveStoredUser, getStoredToken, getStoredUser } from './services/apiClient';
 import { logoutAccount, userProfileStore } from './features/auth/authStore';
 
 // ============================================================================
@@ -122,11 +122,12 @@ function handlePopState() {
   admin.value = current.admin;
   authPage.value = current.authPage;
 }
-const city = ref('Samarinda');
+const savedCity = typeof localStorage !== 'undefined' ? (localStorage.getItem('polusee_selected_city') || userProfileStore.lokasi_default || 'Samarinda') : 'Samarinda';
+const city = ref(savedCity);
 const period = ref('24 jam');
 const notification = ref(false);
 const article = ref(null);
-const point = ref('Samarinda Kota');
+const point = ref(savedCity + ' Kota');
 const zoom = ref(1);
 const personalized = ref(false);
 const report = ref(false);
@@ -140,21 +141,36 @@ const historyData = ref(null);
 const healthData = ref(null);
 const lessons = ref([...initialLessons]);
 
-const reports = ref([]);
-const loadingData = ref(false);
-const loadingFeed = ref(true);
+const REPORTS_CACHE_KEY = 'polusee_cached_reports';
 
-// Bersihkan cache lama agar tidak mengganggu
-try {
-  localStorage.removeItem('polusee_cached_reports');
-} catch {}
+function getCachedReports() {
+  try {
+    const raw = localStorage.getItem(REPORTS_CACHE_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveCachedReports(items) {
+  try {
+    if (Array.isArray(items) && items.length > 0) {
+      localStorage.setItem(REPORTS_CACHE_KEY, JSON.stringify(items));
+    }
+  } catch {}
+}
+
+const initialCachedReports = getCachedReports();
+const reports = ref(initialCachedReports);
+const loadingData = ref(false);
+const loadingFeed = ref(initialCachedReports.length === 0);
 
 // Live Device Location Tracking State
 const userDeviceLocation = ref(null); // { lat, lon, accuracy }
 const isLiveTracking = ref(true); // Default true: Lokasi default adalah posisi map device dijalankan
 let geolocationWatchId = null;
 
-const aqi = computed(() => realtimeData.value?.aqi ?? 74);
+const aqi = computed(() => realtimeData.value?.aqi ?? null);
 const pm25 = computed(() => realtimeData.value?.pm25 ?? 23.0);
 const updatedAt = computed(() => realtimeData.value?.updatedAt ?? '11.00 WITA');
 const cityProvince = computed(
@@ -209,7 +225,7 @@ async function fetchCityData(cityName = city.value, lat = null, lon = null) {
     }
 
     // Rekomendasi kesehatan dinamis dari backend rule-engine
-    const curAqi = realtimeData.value?.aqi || 74;
+    const curAqi = realtimeData.value?.aqi || 100;
     const recRes = await getHealthRecommendationData(
       curAqi,
       userProfileStore.kategori_rentan || 'Umum'
@@ -249,6 +265,20 @@ async function initLiveLocationTracking() {
         const nearest = findNearestSupportedCity(lat, lon);
         if (nearest) {
           city.value = nearest;
+          point.value = nearest + ' Kota';
+          try { localStorage.setItem('polusee_selected_city', nearest); } catch {}
+
+          // Otomatis update lokasi default user ke Supabase
+          if (userProfileStore.id_akun) {
+            userProfileStore.lokasi_default = nearest;
+            updateProfileData({
+              lokasi_default: nearest,
+              latitude: lat,
+              longitude: lon,
+            }).then(() => {
+              console.log('[Supabase GPS Sync]: Lokasi tersimpan ke Supabase:', nearest);
+            }).catch(e => console.warn(e));
+          }
         }
 
         await fetchCityData(city.value, lat, lon);

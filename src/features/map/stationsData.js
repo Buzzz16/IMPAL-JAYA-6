@@ -443,7 +443,7 @@ export function findNearestSupportedCity(lat, lon) {
  * Titik stasiun kota terpilih diletakkan di prioritas teratas dengan data live,
  * diikuti seluruh kota lain di Sumatera, Jawa, Kalimantan, Bali, Nusa Tenggara, dan Sulawesi.
  */
-export function getAllIndonesiaStations(selectedCity = 'Samarinda', selectedCityAqi = 74, liveCityStations = []) {
+export function getAllIndonesiaStations(selectedCity = 'Samarinda', selectedCityAqi = 100, liveCityStations = []) {
   const allStations = [];
 
   for (const [cityName, cityMeta] of Object.entries(CITY_COORDINATES)) {
@@ -493,7 +493,7 @@ export function getAllIndonesiaStations(selectedCity = 'Samarinda', selectedCity
           : cityName === 'Bekasi' ? 168
           : cityName === 'Tangerang' ? 164
           : cityName === 'Bogor' ? 115
-          : 74);
+          : 100);
 
       (cityMeta.stations || []).forEach((st, idx) => {
         const val = Math.max(15, cityBaseAqi + (st.offset || 0));

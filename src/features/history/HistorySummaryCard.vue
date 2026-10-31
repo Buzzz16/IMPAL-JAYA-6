@@ -34,7 +34,7 @@ const activeSeries = computed(() => {
     return props.historyData.series;
   }
   const count = props.period === '24 jam' ? 24 : props.period === '7 hari' ? 7 : 30;
-  const baseAqi = props.historyData?.currentAqi || 74;
+  const baseAqi = props.historyData?.currentAqi || 100;
   return Array.from({ length: count }, (_, i) => {
     let multiplier = 1.0;
     if (props.period === '24 jam') {

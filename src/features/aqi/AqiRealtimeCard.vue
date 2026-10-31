@@ -88,7 +88,7 @@ function handleKeydown(event) {
     </div>
     <div class="aqi-main">
       <div>
-        <span class="aqi-number" :style="{ color: theme.textColor }">{{ aqi }}</span>
+        <span class="aqi-number" :style="{ color: theme.textColor }">{{ (aqi !== null && aqi !== undefined) ? aqi : '--' }}</span>
         <span class="aqi-unit" :style="{ color: theme.unitColor }">US AQI</span>
       </div>
       <div class="sun-art" :style="{ color: theme.sunArt }">
@@ -103,10 +103,10 @@ function handleKeydown(event) {
         color: theme.badgeText,
       }"
     >
-      <i :style="{ backgroundColor: theme.badgeDot }" />{{ theme.label }}
+      <i :style="{ backgroundColor: theme.badgeDot }" />{{ (aqi !== null && aqi !== undefined) ? theme.label : 'Memuat data...' }}
     </div>
     <p class="aqi-description" :style="{ color: theme.descColor }">
-      {{ theme.description }}
+      {{ (aqi !== null && aqi !== undefined) ? theme.description : 'Menghubungkan ke stasiun pemantau udara real-time...' }}
     </p>
     <div class="aqi-scale">
       <span :class="{ 'scale-active': theme.level === 1 }" />
@@ -132,7 +132,7 @@ function handleKeydown(event) {
       <div class="metric-cell metric-cell-left" :style="{ borderRightColor: theme.divider }">
         <span class="metric-label" :style="{ color: theme.descColor }">POLUTAN PM2.5</span>
         <strong class="metric-value" :style="{ color: theme.textColor }">
-          <span>PM2.5 {{ displayPm25 }}</span>
+          <span>PM2.5 {{ (aqi !== null && aqi !== undefined) ? displayPm25 : '--' }}</span>
           <small :style="{ color: theme.unitColor }">µg/m³</small>
         </strong>
       </div>

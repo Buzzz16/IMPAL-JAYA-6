@@ -15,6 +15,9 @@ function mapSupabaseRowToReport(row) {
   return {
     id: `post-${row.id_post}`,
     id_post: row.id_post,
+    id_user: row.id_user || null,
+    userId: row.id_user || null,
+    email: row.email || '',
     ticket: row.nomor_tiket || `#TKT-${row.id_post}`,
     author: row.nama_lengkap || 'Pengguna PoluSee',
     user: `@${(row.nama_lengkap || 'pengguna').toLowerCase().replace(/\s+/g, '')}`,
@@ -81,6 +84,7 @@ export async function getFeedKomunitas(req, res) {
       `SELECT p.*, l.id_laporan, l.nomor_tiket, l.kategori_polusi, l.deskripsi_kejadian,
               l.alamat_lokasi, l.latitude, l.longitude, l.url_foto_bukti, l.status_verifikasi,
               COALESCE(a.nama_lengkap, 'Pengguna PoluSee') as nama_lengkap,
+              a.email,
               u.foto_profil,
               COALESCE(p.jumlah_like, 0) AS likes_count,
               (
@@ -284,6 +288,7 @@ export async function getDetailPostKomunitas(req, res) {
       `SELECT p.*, l.id_laporan, l.nomor_tiket, l.kategori_polusi, l.deskripsi_kejadian,
               l.alamat_lokasi, l.latitude, l.longitude, l.url_foto_bukti, l.status_verifikasi,
               COALESCE(a.nama_lengkap, 'Pengguna PoluSee') as nama_lengkap,
+              a.email,
               u.foto_profil,
               COALESCE(p.jumlah_like, 0) AS likes_count,
               (
@@ -496,6 +501,225 @@ export async function addCommentToPost(req, res) {
     res.locals.dbLog = `Gagal tambah komentar: ${err.message}`;
     return res.status(500).json({
       message: 'Gagal menambahkan komentar ke database Supabase.',
+      error: err.message,
+    });
+  }
+}
+
+// UC-09 & UC-10: Memperbarui / Mengedit Konten Post & Laporan Komunitas
+export async function updatePostKomunitas(req, res) {
+  try {
+    const { id_post } = req.params;
+    const cleanId = parseInt(String(id_post).replace(/^post-/, '').replace(/^rep-/, ''), 10);
+
+    if (isNaN(cleanId)) {
+      return res.status(400).json({ message: 'ID post tidak valid.' });
+    }
+
+    const currentUserId = req.user?.id_akun || null;
+    const isUserAdmin = req.user?.role === 'ADMIN';
+
+    // 1. Cek keberadaan post dan otorisasi kepemilikan
+    const checkPostRes = await query(
+      'SELECT id_post, id_user FROM post_komunitas WHERE id_post = $1',
+      [cleanId]
+    );
+
+    if (!checkPostRes || checkPostRes.rows.length === 0) {
+      return res.status(404).json({ message: 'Post tidak ditemukan di database.' });
+    }
+
+    const existingPost = checkPostRes.rows[0];
+
+    // Otorisasi: Hanya pemilik post (id_user sama) atau Admin yang diizinkan mengedit
+    if (!isUserAdmin) {
+      if (!currentUserId) {
+        return res.status(401).json({ message: 'Silakan login terlebih dahulu untuk mengedit post.' });
+      }
+      if (existingPost.id_user && String(existingPost.id_user) !== String(currentUserId)) {
+        return res.status(403).json({
+          message: 'Akses ditolak: Anda hanya dapat mengedit post yang Anda unggah sendiri.',
+        });
+      }
+    }
+
+    const {
+      caption,
+      deskripsi_kejadian,
+      area,
+      address,
+      alamat_lokasi,
+      city,
+      condition,
+      category,
+      kategori_polusi,
+      source,
+      image,
+      photo,
+      url_foto_bukti,
+      latitude,
+      longitude,
+    } = req.body;
+
+    const newCaption = (caption ?? deskripsi_kejadian ?? '').trim();
+    const kota = city || '';
+    const rawArea = (area ?? address ?? alamat_lokasi ?? '').trim();
+    const finalAddress = rawArea ? (kota && !rawArea.includes(kota) ? `${rawArea}, ${kota}` : rawArea) : null;
+    const newKategori = kategori_polusi || category || condition || source || null;
+    const newPhoto = url_foto_bukti || image || photo || null;
+
+    // 2. Update post_komunitas
+    const updatePostRes = await query(
+      `UPDATE post_komunitas
+       SET isi_konten = COALESCE(NULLIF($1, ''), isi_konten),
+           judul_post = COALESCE(NULLIF($2, ''), judul_post),
+           media_lampiran = COALESCE($3, media_lampiran)
+       WHERE id_post = $4
+       RETURNING *`,
+      [newCaption || null, newCaption ? newCaption.slice(0, 140) : null, newPhoto, cleanId]
+    );
+
+    if (!updatePostRes || updatePostRes.rows.length === 0) {
+      return res.status(404).json({ message: 'Post tidak ditemukan di database.' });
+    }
+
+    // 3. Update laporan_polusi jika ada relasi
+    await query(
+      `UPDATE laporan_polusi
+       SET deskripsi_kejadian = COALESCE(NULLIF($1, ''), deskripsi_kejadian),
+           kategori_polusi = COALESCE($2, kategori_polusi),
+           alamat_lokasi = COALESCE(NULLIF($3, ''), alamat_lokasi),
+           url_foto_bukti = COALESCE($4, url_foto_bukti),
+           latitude = COALESCE($5, latitude),
+           longitude = COALESCE($6, longitude)
+       WHERE id_post = $7`,
+      [newCaption || null, newKategori, finalAddress, newPhoto, latitude || null, longitude || null, cleanId]
+    );
+
+    invalidateFeedCache();
+
+    // 4. Ambil data gabungan terbaru
+    const currentClientId = req.headers['x-client-id'] || req.query.client_id || null;
+
+    const result = await query(
+      `SELECT p.*, l.id_laporan, l.nomor_tiket, l.kategori_polusi, l.deskripsi_kejadian,
+              l.alamat_lokasi, l.latitude, l.longitude, l.url_foto_bukti, l.status_verifikasi,
+              COALESCE(a.nama_lengkap, 'Pengguna PoluSee') as nama_lengkap,
+              a.email,
+              u.foto_profil,
+              COALESCE(p.jumlah_like, 0) AS likes_count,
+              (
+                CASE WHEN (
+                  ($1::text IS NOT NULL AND $1::text = ANY(p.liked_by))
+                  OR ($2::text IS NOT NULL AND $2::text = ANY(p.liked_by))
+                ) THEN true ELSE false END
+              ) AS liked,
+              (
+                SELECT COALESCE(
+                  json_agg(
+                    json_build_object(
+                      'id', CONCAT('c-', kp.id_komentar),
+                      'id_komentar', kp.id_komentar,
+                      'name', COALESCE(kp.nama_pengguna, a_comm.nama_lengkap, 'Pengguna PoluSee'),
+                      'author', COALESCE(kp.nama_pengguna, a_comm.nama_lengkap, 'Pengguna PoluSee'),
+                      'text', kp.isi_komentar,
+                      'isi', kp.isi_komentar,
+                      'created_at', kp.created_at,
+                      'time', TO_CHAR(kp.created_at, 'DD/MM/YYYY HH24:MI')
+                    ) ORDER BY kp.created_at ASC
+                  ),
+                  '[]'::json
+                )
+                FROM komentar_post kp
+                LEFT JOIN akun a_comm ON kp.id_user = a_comm.id_akun
+                WHERE kp.id_post = p.id_post
+              ) AS comments
+       FROM post_komunitas p
+       LEFT JOIN laporan_polusi l ON p.id_post = l.id_post
+       LEFT JOIN akun a ON p.id_user = a.id_akun
+       LEFT JOIN users u ON p.id_user = u.id_akun
+       WHERE p.id_post = $3
+       LIMIT 1`,
+      [currentUserId, currentClientId, cleanId]
+    );
+
+    const fullRow = result.rows[0] || updatePostRes.rows[0];
+    const mapped = mapSupabaseRowToReport(fullRow);
+
+    res.locals.dbLog = `Post #${cleanId} berhasil diperbarui`;
+    return res.status(200).json({
+      success: true,
+      message: 'Post berhasil diperbarui.',
+      post: mapped,
+      report: mapped,
+      laporan: mapped,
+    });
+  } catch (err) {
+    res.locals.dbLog = `Gagal update post: ${err.message}`;
+    return res.status(500).json({
+      message: 'Gagal memperbarui post di database',
+      error: err.message,
+    });
+  }
+}
+
+// Menghapus Post & Laporan Komunitas
+export async function deletePostKomunitas(req, res) {
+  try {
+    const { id_post } = req.params;
+    const cleanId = parseInt(String(id_post).replace(/^post-/, '').replace(/^rep-/, ''), 10);
+
+    if (isNaN(cleanId)) {
+      return res.status(400).json({ message: 'ID post tidak valid.' });
+    }
+
+    const currentUserId = req.user?.id_akun || null;
+    const isUserAdmin = req.user?.role === 'ADMIN';
+
+    // 1. Cek keberadaan post dan otorisasi kepemilikan
+    const checkPostRes = await query(
+      'SELECT id_post, id_user FROM post_komunitas WHERE id_post = $1',
+      [cleanId]
+    );
+
+    if (!checkPostRes || checkPostRes.rows.length === 0) {
+      return res.status(404).json({ message: 'Post tidak ditemukan di database.' });
+    }
+
+    const existingPost = checkPostRes.rows[0];
+
+    // Otorisasi: Hanya pemilik post asli atau Admin yang diizinkan menghapus
+    if (!isUserAdmin) {
+      if (!currentUserId) {
+        return res.status(401).json({ message: 'Silakan login terlebih dahulu untuk menghapus post.' });
+      }
+      if (existingPost.id_user && String(existingPost.id_user) !== String(currentUserId)) {
+        return res.status(403).json({
+          message: 'Akses ditolak: Anda hanya dapat menghapus post yang Anda unggah sendiri.',
+        });
+      }
+    }
+
+    const deleteRes = await query(
+      'DELETE FROM post_komunitas WHERE id_post = $1 RETURNING id_post',
+      [cleanId]
+    );
+
+    if (!deleteRes || deleteRes.rows.length === 0) {
+      return res.status(404).json({ message: 'Post tidak ditemukan.' });
+    }
+
+    invalidateFeedCache();
+    res.locals.dbLog = `Post #${cleanId} berhasil dihapus`;
+    return res.status(200).json({
+      success: true,
+      message: 'Post berhasil dihapus.',
+      id_post: cleanId,
+    });
+  } catch (err) {
+    res.locals.dbLog = `Gagal hapus post: ${err.message}`;
+    return res.status(500).json({
+      message: 'Gagal menghapus post dari database',
       error: err.message,
     });
   }

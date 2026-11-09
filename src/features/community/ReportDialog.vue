@@ -7,9 +7,15 @@
  * Menjamin kompatibilitas gambar & foto laporan
  * ============================================================================
  */
-import { ref, reactive, onMounted, onBeforeUnmount } from 'vue';
+import { ref, reactive, computed, onMounted, onBeforeUnmount } from 'vue';
 import { detectUserLocationViaOpenStreetMap } from '../../services/osmMapService';
-import { apiRequest, togglePostLikeApi, addPostCommentApi } from '../../services/apiClient';
+import {
+  apiRequest,
+  togglePostLikeApi,
+  addPostCommentApi,
+  updatePostApi,
+  deletePostApi,
+} from '../../services/apiClient';
 import { userProfileStore } from '../auth/authStore';
 import AppIcon from '../../components/common/AppIcon.vue';
 
@@ -32,6 +38,42 @@ const defaultReportPhoto =
 const dialog = ref(null);
 const mode = ref(props.creating ? 'edit' : 'detail');
 const menu = ref(false);
+
+const isOwner = computed(() => {
+  if (props.creating) return true;
+  if (userProfileStore.role === 'ADMIN') return true;
+
+  if (!userProfileStore.id_akun && !userProfileStore.email && !userProfileStore.nama_lengkap) {
+    return false;
+  }
+
+  const r = props.report;
+  if (!r) return false;
+
+  const postUserId = r.id_user || r.userId;
+  if (userProfileStore.id_akun && postUserId && String(postUserId) === String(userProfileStore.id_akun)) {
+    return true;
+  }
+
+  if (userProfileStore.email && r.email && r.email.toLowerCase() === userProfileStore.email.toLowerCase()) {
+    return true;
+  }
+
+  const currentUsername = (userProfileStore.username || '').replace(/^@/, '').toLowerCase().trim();
+  const reportUsername = (r.user || '').replace(/^@/, '').toLowerCase().trim();
+  if (currentUsername && reportUsername && currentUsername === reportUsername) {
+    return true;
+  }
+
+  const currentName = (userProfileStore.nama_lengkap || '').toLowerCase().trim();
+  const reportAuthor = (r.author || '').toLowerCase().trim();
+  if (currentName && reportAuthor && currentName === reportAuthor) {
+    return true;
+  }
+
+  return false;
+});
+
 const draft = reactive({
   ...props.report,
   image: props.report.image || props.report.photo || '',
@@ -150,12 +192,17 @@ async function handleDetectLocation() {
 }
 
 async function handleSaveReport() {
+  if (!props.creating && !isOwner.value) {
+    error.value = 'Anda hanya dapat mengedit post yang Anda unggah sendiri.';
+    return;
+  }
   if (!draft.caption.trim() || !draft.area.trim()) {
     error.value = 'Caption dan area wajib diisi.';
     return;
   }
   const img = draft.image || draft.photo || defaultReportPhoto;
   const updated = {
+    ...props.report,
     ...draft,
     caption: draft.caption.trim(),
     area: draft.area.trim(),
@@ -165,6 +212,8 @@ async function handleSaveReport() {
   };
 
   let savedData = updated;
+  loading.value = true;
+  error.value = '';
   try {
     if (props.creating) {
       const res = await apiRequest('/komunitas/lapor', {
@@ -177,10 +226,30 @@ async function handleSaveReport() {
           ...(res.laporan || res.report),
         };
       }
+    } else {
+      const targetId = updated.id_post || updated.id;
+      const res = await updatePostApi(targetId, updated);
+      if (res && (res.laporan || res.report || res.post)) {
+        savedData = {
+          ...updated,
+          ...(res.laporan || res.report || res.post),
+        };
+      }
     }
-  } catch {
+  } catch (err) {
+    if (err.status === 403 || err.status === 401) {
+      error.value = err.message || err.payload?.message || 'Akses ditolak: Anda hanya dapat mengedit post yang Anda unggah sendiri.';
+      loading.value = false;
+      return;
+    }
+    console.warn('Gagal sinkron laporan ke server:', err);
     // Tetap disimpan ke state lokal apabila server backend belum dinyalakan
+  } finally {
+    loading.value = false;
   }
+
+  // Perbarui state internal draft agar mode detail langsung menampilkan hasil edit
+  Object.assign(draft, savedData);
 
   emit('save', savedData);
   if (props.creating) {
@@ -188,6 +257,28 @@ async function handleSaveReport() {
   } else {
     mode.value = 'detail';
   }
+}
+
+async function handleDeleteReport() {
+  if (!isOwner.value) {
+    error.value = 'Anda hanya dapat menghapus post yang Anda unggah sendiri.';
+    return;
+  }
+  loading.value = true;
+  try {
+    const targetId = props.report.id_post || props.report.id;
+    await deletePostApi(targetId);
+  } catch (err) {
+    if (err.status === 403 || err.status === 401) {
+      error.value = err.message || err.payload?.message || 'Akses ditolak: Anda hanya dapat menghapus post yang Anda unggah sendiri.';
+      loading.value = false;
+      return;
+    }
+    console.warn('Gagal menghapus laporan di server:', err);
+  } finally {
+    loading.value = false;
+  }
+  emit('delete');
 }
 
 async function handleToggleLike() {
@@ -284,7 +375,9 @@ const conditionMap = {
       </p>
       <div class="report-confirm-actions">
         <button class="primary-button" type="button" autofocus @click="mode = 'detail'">Batal</button>
-        <button class="report-danger" type="button" @click="emit('delete')">Hapus laporan</button>
+        <button class="report-danger" type="button" :disabled="loading" @click="handleDeleteReport">
+          {{ loading ? 'Menghapus…' : 'Hapus laporan' }}
+        </button>
       </div>
     </div>
 
@@ -409,7 +502,7 @@ const conditionMap = {
           ← Kembali
         </button>
         <strong>Detail laporan</strong>
-        <div class="report-menu-wrap">
+        <div v-if="isOwner" class="report-menu-wrap">
           <button
             class="icon-button"
             type="button"

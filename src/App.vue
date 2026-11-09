@@ -726,9 +726,15 @@ onBeforeUnmount(() => {
             </div>
           </div>
           <div class="flex items-center gap-2 pl-2 border-l border-[#aeb9ae]/50">
-            <div v-if="userProfileStore.email" class="hidden sm:flex flex-col text-right">
-              <span class="text-xs font-semibold text-[#285765] leading-tight">{{ userProfileStore.nama_lengkap || userProfileStore.email }}</span>
-              <span class="text-[10px] text-[#71827a] leading-none">{{ userProfileStore.email }} · <span class="rounded bg-[#edce7e]/60 px-1 font-bold text-[#285765]">{{ userProfileStore.role || 'USER' }}</span></span>
+            <div v-if="userProfileStore.email" class="hidden sm:flex items-center gap-2">
+              <div class="h-8 w-8 rounded-full overflow-hidden border border-[#aeb9ae] bg-[#285765] text-[#edce7e] flex items-center justify-center text-xs font-bold shrink-0">
+                <img v-if="userProfileStore.foto_profil" :src="userProfileStore.foto_profil" class="h-full w-full object-cover" :alt="userProfileStore.nama_lengkap || 'Avatar'" />
+                <span v-else>{{ (userProfileStore.nama_lengkap || userProfileStore.email || 'P').slice(0, 1).toUpperCase() }}</span>
+              </div>
+              <div class="flex flex-col text-right">
+                <span class="text-xs font-semibold text-[#285765] leading-tight">{{ userProfileStore.nama_lengkap || userProfileStore.email }}</span>
+                <span class="text-[10px] text-[#71827a] leading-none">{{ userProfileStore.email }} · <span class="rounded bg-[#edce7e]/60 px-1 font-bold text-[#285765]">{{ userProfileStore.role || 'USER' }}</span></span>
+              </div>
             </div>
             <div v-else class="hidden sm:flex flex-col text-right">
               <span class="text-xs font-semibold text-[#285765] leading-tight">Pengunjung</span>

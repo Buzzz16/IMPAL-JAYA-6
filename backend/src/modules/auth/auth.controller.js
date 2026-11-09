@@ -1,9 +1,9 @@
 /**
- * ============================================================================
- * MODUL BACKEND: AUTENTIKASI (UC-01 LOGIN & UC-02 REGISTRASI)
- * File: backend/src/modules/auth/auth.controller.js
- * ============================================================================
- */
+* ============================================================================
+* MODUL BACKEND: AUTENTIKASI (UC-01 LOGIN & UC-02 REGISTRASI)
+* File: backend/src/modules/auth/auth.controller.js
+* ============================================================================
+*/
 
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
@@ -25,7 +25,8 @@ export async function login(req, res) {
 
     try {
       const result = await query(
-        `SELECT a.*, u.lokasi_default, u.latitude, u.longitude, u.kategori_rentan, u.foto_profil
+        `SELECT a.*, u.lokasi_default, u.latitude, u.longitude, u.kategori_rentan, u.foto_profil,
+                u.username, u.umur, u.peringatan_aqi_100
          FROM akun a
          LEFT JOIN users u ON a.id_akun = u.id_akun
          WHERE LOWER(TRIM(a.email)) = $1`,
@@ -78,10 +79,13 @@ export async function login(req, res) {
       profil: {
         id_akun: account.id_akun,
         nama_lengkap: account.nama_lengkap,
+        username: account.username || `@${(account.email || 'pengguna').split('@')[0]}`,
         email: account.email,
         role: userRole,
+        umur: account.umur != null ? account.umur : 25,
         lokasi_default: account.lokasi_default || 'Samarinda',
         kategori_rentan: account.kategori_rentan || 'Umum',
+        peringatan_aqi_100: account.peringatan_aqi_100 ?? false,
         foto_profil: account.foto_profil || '',
       },
     });
@@ -133,10 +137,11 @@ export async function register(req, res) {
 
     const createdAkun = insertAkun.rows[0];
 
+    const defaultUsername = `@${cleanEmail.split('@')[0]}`;
     await query(
-      `INSERT INTO users (id_akun, lokasi_default, kategori_rentan)
-       VALUES ($1, $2, 'Umum')`,
-      [createdAkun.id_akun, lokasi_default || 'Samarinda']
+      `INSERT INTO users (id_akun, lokasi_default, kategori_rentan, username, umur, peringatan_aqi_100)
+       VALUES ($1, $2, 'Umum', $3, 25, TRUE)`,
+      [createdAkun.id_akun, lokasi_default || 'Samarinda', defaultUsername]
     );
 
     // <<include>> UC-01 Login: Terbitkan JWT Token sesi langsung
@@ -156,7 +161,7 @@ export async function register(req, res) {
       user: {
         id_akun: createdAkun.id_akun,
         nama_lengkap: createdAkun.nama_lengkap,
-        username: `@${createdAkun.email.split('@')[0]}`,
+        username: defaultUsername,
         email: createdAkun.email,
         role: 'USER',
         umur: 25,

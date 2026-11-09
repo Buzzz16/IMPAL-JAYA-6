@@ -3,7 +3,7 @@
  * ============================================================================
  * HALAMAN KELOLA PROFIL & PREFERENSI PENGGUNA (FR-11 / UC-11 KELOLA PROFIL)
  * File: src/features/profile/ProfileView.vue
- * Menjamin semua foto profil & foto laporan ter-render dengan sempurna
+ * Menjamin semua foto profil & preferensi pengguna tersimpan di Supabase
  * ============================================================================
  */
 import { ref, computed, watch } from 'vue';
@@ -37,20 +37,44 @@ function getInitials(name = '') {
 }
 
 const editMode = ref(false);
+const isSaving = ref(false);
+const saveSuccess = ref(false);
+const errorMessage = ref('');
+
 const nameVal = ref(userProfileStore.nama_lengkap || '');
 const usernameVal = ref(userProfileStore.username ? userProfileStore.username.replace(/^@/, '') : '');
 const cityVal = ref(userProfileStore.lokasi_default || 'Samarinda');
-const ageVal = ref(userProfileStore.umur || 25);
+const ageVal = ref(userProfileStore.umur ?? 25);
 const groupVal = ref(userProfileStore.kategori_rentan || 'Umum');
-const alertVal = ref(userProfileStore.peringatan_aqi_100 || false);
+const alertVal = ref(userProfileStore.peringatan_aqi_100 ?? false);
 const avatarUrl = ref(userProfileStore.foto_profil || '');
 
 watch(() => userProfileStore.nama_lengkap, (v) => { nameVal.value = v || ''; });
 watch(() => userProfileStore.lokasi_default, (v) => { cityVal.value = v || 'Samarinda'; });
 watch(() => userProfileStore.username, (v) => { usernameVal.value = (v || '').replace(/^@/, ''); });
-watch(() => userProfileStore.umur, (v) => { if (v) ageVal.value = v; });
+watch(() => userProfileStore.umur, (v) => { if (v != null) ageVal.value = v; });
 watch(() => userProfileStore.kategori_rentan, (v) => { if (v) groupVal.value = v; });
+watch(() => userProfileStore.peringatan_aqi_100, (v) => { alertVal.value = Boolean(v); });
 watch(() => userProfileStore.foto_profil, (v) => { avatarUrl.value = v || ''; });
+
+function openEditMode() {
+  nameVal.value = userProfileStore.nama_lengkap || '';
+  usernameVal.value = (userProfileStore.username || '').replace(/^@/, '');
+  cityVal.value = userProfileStore.lokasi_default || 'Samarinda';
+  ageVal.value = userProfileStore.umur ?? 25;
+  groupVal.value = userProfileStore.kategori_rentan || 'Umum';
+  alertVal.value = userProfileStore.peringatan_aqi_100 ?? false;
+  avatarUrl.value = userProfileStore.foto_profil || '';
+  errorMessage.value = '';
+  saveSuccess.value = false;
+  editMode.value = true;
+}
+
+function closeEditMode() {
+  editMode.value = false;
+  errorMessage.value = '';
+  saveSuccess.value = false;
+}
 
 function isNewReport(id) {
   return !initialReports.some((r) => r.id === id);
@@ -82,42 +106,110 @@ const myReports = computed(() => {
 function handleAvatarChange(event) {
   const file = event.target.files?.[0];
   if (!file) return;
-  if (!['image/jpeg', 'image/png'].includes(file.type) || file.size > 5 * 1024 * 1024) return;
+
+  if (!file.type.startsWith('image/')) {
+    errorMessage.value = 'File yang dipilih harus berupa gambar (JPG, PNG, WEBP).';
+    event.target.value = '';
+    return;
+  }
+
+  errorMessage.value = '';
+
   const reader = new FileReader();
-  reader.onload = () => {
-    avatarUrl.value = String(reader.result);
+  reader.onload = (e) => {
+    const img = new Image();
+    img.onload = () => {
+      try {
+        const canvas = document.createElement('canvas');
+        const MAX_SIZE = 800;
+        let width = img.width;
+        let height = img.height;
+
+        if (width > height) {
+          if (width > MAX_SIZE) {
+            height = Math.round((height * MAX_SIZE) / width);
+            width = MAX_SIZE;
+          }
+        } else {
+          if (height > MAX_SIZE) {
+            width = Math.round((width * MAX_SIZE) / height);
+            height = MAX_SIZE;
+          }
+        }
+
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          avatarUrl.value = String(e.target?.result || '');
+          return;
+        }
+
+        ctx.drawImage(img, 0, 0, width, height);
+        const compressedBase64 = canvas.toDataURL('image/jpeg', 0.85);
+        avatarUrl.value = compressedBase64;
+      } catch {
+        avatarUrl.value = String(e.target?.result || '');
+      }
+    };
+    img.onerror = () => {
+      errorMessage.value = 'Gagal memproses file gambar.';
+    };
+    img.src = String(e.target?.result || '');
+  };
+  reader.onerror = () => {
+    errorMessage.value = 'Gagal membaca file gambar.';
   };
   reader.readAsDataURL(file);
+  event.target.value = '';
 }
 
 async function handleSavePreferences() {
-  const cleanUsername = usernameVal.value.trim()
-    ? `@${usernameVal.value.trim().replace(/^@/, '').toLowerCase()}`
+  const cleanName = nameVal.value.trim();
+  if (!cleanName) {
+    errorMessage.value = 'Nama lengkap wajib diisi.';
+    return;
+  }
+
+  isSaving.value = true;
+  errorMessage.value = '';
+  saveSuccess.value = false;
+
+  const rawUsername = usernameVal.value.trim().replace(/^@/, '');
+  const cleanUsername = rawUsername
+    ? `@${rawUsername.toLowerCase()}`
     : (userProfileStore.username || (userProfileStore.email ? `@${userProfileStore.email.split('@')[0]}` : '@pengguna'));
 
-  await updateProfileData({
-    nama_lengkap: nameVal.value.trim() || userProfileStore.nama_lengkap || 'Pengguna',
+  const payload = {
+    nama_lengkap: cleanName,
     username: cleanUsername,
     lokasi_default: cityVal.value.trim() || 'Samarinda',
     umur: Number(ageVal.value) || 25,
-    kategori_rentan: groupVal.value,
-    peringatan_aqi_100: alertVal.value,
+    kategori_rentan: groupVal.value || 'Umum',
+    peringatan_aqi_100: Boolean(alertVal.value),
     foto_profil: avatarUrl.value || '',
-  });
-  emit('save-preferences');
-  editMode.value = false;
+  };
+
+  try {
+    await updateProfileData(payload);
+    saveSuccess.value = true;
+    emit('save-preferences');
+    setTimeout(() => {
+      editMode.value = false;
+      saveSuccess.value = false;
+    }, 900);
+  } catch (err) {
+    errorMessage.value = err.message || 'Gagal menyimpan profil ke database Supabase.';
+  } finally {
+    isSaving.value = false;
+  }
 }
 </script>
 
 <template>
   <div>
-    <input
-      id="edit-profile-mode"
-      v-model="editMode"
-      class="peer sr-only"
-      type="checkbox"
-    />
-    <section class="border border-[#aeb9ae] bg-[#f0f2e8] peer-checked:hidden">
+    <!-- Mode Tampilan Profil -->
+    <section v-if="!editMode" class="border border-[#aeb9ae] bg-[#f0f2e8]">
       <!-- Header Profil & Foto Pengguna -->
       <div class="grid items-center gap-7 border-b border-[#ced2c8] p-6 sm:grid-cols-[132px_1fr] sm:p-9">
         <div class="mx-auto flex aspect-square w-28 sm:w-32 items-center justify-center rounded-full border-4 border-[#f8f8f1] bg-[#285765] text-white shadow-[0_0_0_1px_#9ba99d] overflow-hidden">
@@ -137,7 +229,19 @@ async function handleSavePreferences() {
               <h2 class="!m-0 !text-[24px]">{{ userProfileStore.nama_lengkap || 'Pengguna PoluSee' }}</h2>
               <span class="mt-1 block text-[length:var(--text-label)] text-[#7d8580]">
                 {{ userProfileStore.username || (userProfileStore.email ? `@${userProfileStore.email.split('@')[0]}` : '@pengguna') }} · {{ userProfileStore.lokasi_default || 'Samarinda' }}
+                <template v-if="userProfileStore.umur"> · {{ userProfileStore.umur }} tahun</template>
               </span>
+              <div class="mt-2 flex flex-wrap items-center justify-center sm:justify-start gap-2">
+                <span class="inline-flex items-center rounded-full bg-[#285765]/10 px-2.5 py-0.5 text-xs font-medium text-[#285765]">
+                  {{ userProfileStore.kategori_rentan || 'Umum' }}
+                </span>
+                <span
+                  v-if="userProfileStore.peringatan_aqi_100"
+                  class="inline-flex items-center gap-1 rounded-full bg-[#edce7e]/40 px-2.5 py-0.5 text-xs font-medium text-[#285765]"
+                >
+                  <AppIcon name="bell" :size="12" /> Peringatan AQI > 100 Aktif
+                </span>
+              </div>
             </div>
             <div class="sm:ml-auto">
               <strong class="block text-[24px] leading-none">{{ myReports.length }}</strong>
@@ -146,12 +250,13 @@ async function handleSavePreferences() {
               </span>
             </div>
           </div>
-          <label
-            class="mt-5 inline-flex cursor-pointer items-center gap-2 border border-[#285765] px-4 py-2 text-[length:var(--text-caption)] font-bold text-[#285765] hover:bg-[#285765] hover:text-[#f8f8f1]"
-            for="edit-profile-mode"
+          <button
+            type="button"
+            class="mt-5 inline-flex cursor-pointer items-center gap-2 border border-[#285765] bg-transparent px-4 py-2 text-[length:var(--text-caption)] font-bold text-[#285765] hover:bg-[#285765] hover:text-[#f8f8f1] transition"
+            @click="openEditMode"
           >
             <AppIcon name="user" :size="15" /> EDIT PROFIL
-          </label>
+          </button>
         </div>
       </div>
 
@@ -207,16 +312,27 @@ async function handleSavePreferences() {
     </section>
 
     <!-- Halaman Edit Profil (Secondary Panel) -->
-    <section class="secondary-panel hidden peer-checked:block">
-      <label
-        class="mb-6 inline-flex cursor-pointer items-center gap-2 text-[length:var(--text-caption)] font-bold text-[#285765] hover:underline"
-        for="edit-profile-mode"
+    <section v-else class="secondary-panel">
+      <button
+        type="button"
+        class="mb-6 inline-flex cursor-pointer items-center gap-2 text-[length:var(--text-caption)] font-bold text-[#285765] hover:underline bg-transparent border-0 p-0"
+        @click="closeEditMode"
       >
         ← KEMBALI KE PROFIL
-      </label>
+      </button>
       <span class="eyebrow">UBAH PROFIL &amp; PREFERENSI</span>
       <h2>Halo, {{ nameVal || 'Pengguna' }}.</h2>
       <p>Perbarui identitas dan kebutuhan kesehatanmu.</p>
+
+      <!-- Alert Notifikasi Error / Sukses -->
+      <div v-if="errorMessage" class="my-4 rounded-md border border-[#b53434]/40 bg-[#fef2f2] p-3 text-sm text-[#b53434]">
+        {{ errorMessage }}
+      </div>
+      <div v-if="saveSuccess" class="my-4 rounded-md border border-[#23704b]/40 bg-[#ecfdf5] p-3 text-sm text-[#23704b] flex items-center gap-2">
+        <AppIcon name="check" :size="16" />
+        <span>Profil dan preferensi berhasil disimpan ke database!</span>
+      </div>
+
       <!-- Ubah Foto Profil -->
       <div class="mt-7 flex max-w-md items-center gap-4 border border-[#aeb9ae] bg-[#fafbf4] p-4">
         <div class="h-16 w-16 shrink-0 rounded-full border border-[#aeb9ae] overflow-hidden flex items-center justify-center bg-[#285765] text-white">
@@ -233,17 +349,17 @@ async function handleSavePreferences() {
         <div class="flex-1">
           <strong class="block text-[length:var(--text-label)]">Foto profil</strong>
           <small class="mt-0.5 block text-[length:var(--text-caption)] text-[#7d8580]">
-            Gunakan inisial atau unggah foto JPG/PNG (maks. 5 MB)
+            Format JPG, PNG, atau WEBP (otomatis dioptimasi)
           </small>
           <div class="mt-2 flex items-center gap-2">
             <label class="cursor-pointer border border-[#285765] bg-white px-2.5 py-1 text-[11px] font-bold text-[#285765] hover:bg-[#285765] hover:text-white transition">
-              PILIH FOTO
-              <input class="sr-only" type="file" accept="image/jpeg,image/png" @change="handleAvatarChange" />
+              {{ avatarUrl ? 'GANTI FOTO' : 'PILIH FOTO' }}
+              <input class="sr-only" type="file" accept="image/*" @change="handleAvatarChange" />
             </label>
             <button
               v-if="avatarUrl"
               type="button"
-              class="text-[11px] text-[#b53434] underline hover:text-red-700 cursor-pointer"
+              class="text-[11px] text-[#b53434] underline hover:text-red-700 cursor-pointer bg-transparent border-0 p-0"
               @click="avatarUrl = ''"
             >
               Hapus foto
@@ -294,13 +410,38 @@ async function handleSavePreferences() {
       <label class="checkbox-label">
         <input v-model="alertVal" type="checkbox" /> Aktifkan peringatan ketika AQI melebihi 100
       </label>
-      <button class="primary-button" type="button" @click="handleSavePreferences">
-        <template v-if="personalized">
-          <AppIcon name="check" :size="17" /> Preferensi tersimpan
-        </template>
-        <template v-else>Simpan preferensi</template>
-      </button>
-      <p v-if="personalized" class="mt-2 text-sm text-[#23704b]">Preferensi tersimpan untuk sesi ini.</p>
+
+      <div class="mt-6 flex items-center gap-3">
+        <button
+          class="primary-button flex items-center gap-2"
+          type="button"
+          :disabled="isSaving"
+          @click="handleSavePreferences"
+        >
+          <template v-if="isSaving">
+            <svg class="animate-spin h-4 w-4 text-white" viewBox="0 0 24 24" fill="none">
+              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
+            </svg>
+            <span>Menyimpan ke database...</span>
+          </template>
+          <template v-else-if="saveSuccess">
+            <AppIcon name="check" :size="17" />
+            <span>Tersimpan!</span>
+          </template>
+          <template v-else>
+            <span>Simpan preferensi</span>
+          </template>
+        </button>
+        <button
+          type="button"
+          class="px-4 py-2 text-sm font-semibold text-[#285765] hover:underline bg-transparent border-0 cursor-pointer"
+          :disabled="isSaving"
+          @click="closeEditMode"
+        >
+          Batal
+        </button>
+      </div>
     </section>
   </div>
 </template>

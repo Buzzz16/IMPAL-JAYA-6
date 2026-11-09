@@ -132,10 +132,11 @@ export async function updateProfileData(payload) {
       Object.assign(userProfileStore, res.profil_user);
       saveStoredUser(userProfileStore);
     }
-  } catch {
-    // Tetap tersimpan di sesi lokal apabila backend belum aktif
+    return userProfileStore;
+  } catch (err) {
+    console.error('[authStore] Gagal memperbarui profil ke Supabase:', err);
+    throw err;
   }
-  return userProfileStore;
 }
 
 export async function forgotPasswordAccount({ email, newPassword, confirmPassword }) {

@@ -6,7 +6,7 @@
  */
 
 import { query } from '../../config/db.js';
-import { dbStore } from '../../data/dbStore.js';
+
 
 function mapSupabaseRowToReport(row) {
   const photo = row.url_foto_bukti || row.media_lampiran || '';
@@ -128,11 +128,7 @@ export async function getFeedKomunitas(req, res) {
     return res.status(200).json(responsePayload);
   } catch (err) {
     res.locals.dbLog = `Gagal query: ${err.message}`;
-    const fallbackReports = dbStore.getLaporan() || [];
-    return res.status(200).json({
-      feed_komunitas: fallbackReports,
-      reports: fallbackReports,
-    });
+    return res.status(500).json({ message: 'Gagal memuat feed komunitas dari database Supabase.', error: err.message });
   }
 }
 

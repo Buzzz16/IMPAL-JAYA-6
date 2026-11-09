@@ -301,7 +301,7 @@ async function saveEditReview(rev) {
         </div>
         <div class="education-stamp">
           <span class="eyebrow">BEKAL NAPAS SEHAT</span>
-          <strong>01 / 07</strong>
+          <strong>01 / {{ String(lessons.length || 3).padStart(2, '0') }}</strong>
           <span>Satu topik hari ini.<br />Langkah baik untuk esok.</span>
         </div>
       </div>

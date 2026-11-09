@@ -2,6 +2,7 @@
  * ============================================================================
  * DATA MATERI EDUKASI & ULASAN PENGGUNA (FR-06, FR-07, FR-15 SKPL-1000)
  * File: src/features/education/educationData.js
+ * Sinkron 100% dengan Database PoluSee (3 Materi Edukasi Terverifikasi)
  * ============================================================================
  */
 
@@ -42,54 +43,6 @@ const baseLessons = [
       'Respirator tidak melindungi dari semua gas. Mengurangi paparan tetap menjadi langkah utama; konsultasikan dengan tenaga kesehatan bila memiliki kondisi medis.',
     ],
   },
-  {
-    topic: 'Kesehatan',
-    title: 'Asma dan polusi: kenali pemicunya.',
-    minutes: 5,
-    audience: 'Kelompok sensitif',
-    summary: 'Langkah lebih waspada bagi penderita asma.',
-    sections: [
-      'Polusi udara dapat memicu gejala asma, seperti batuk, mengi, dan sesak. Pantau AQI sebelum keluar rumah.',
-      'Ikuti rencana penanganan asma dari dokter dan gunakan obat sesuai resep. Pilih aktivitas di ruang dengan udara lebih bersih saat polusi meningkat.',
-      'Jika mengalami sesak berat, sulit berbicara, atau obat pereda tidak membantu, segera cari pertolongan medis.',
-    ],
-  },
-  {
-    topic: 'Kesehatan',
-    title: 'Melindungi anak dan lansia saat udara buruk.',
-    minutes: 4,
-    audience: 'Kelompok sensitif',
-    summary: 'Perhatian ekstra untuk orang-orang yang kita sayangi.',
-    sections: [
-      'Anak-anak, lansia, serta orang dengan penyakit paru atau jantung lebih rentan terhadap dampak polusi.',
-      'Pindahkan aktivitas berat ke dalam ruangan ketika AQI meningkat. Hindari asap rokok, pembakaran sampah, dan sumber polusi dalam rumah.',
-      'Perhatikan batuk, kelelahan, atau sesak yang tidak biasa. Diskusikan kebutuhan perlindungan dengan tenaga kesehatan; jangan memaksakan respirator yang tidak sesuai.',
-    ],
-  },
-  {
-    topic: 'Aktivitas sehari-hari',
-    title: 'Tetap aktif tanpa mengabaikan kualitas udara.',
-    minutes: 3,
-    audience: 'Semua orang',
-    summary: 'Atur waktu, intensitas, dan lokasi aktivitasmu.',
-    sections: [
-      'Periksa kualitas udara sebelum berolahraga. Jangan menganggap pagi hari selalu lebih bersih; gunakan data setempat.',
-      'Saat udara buruk, kurangi durasi dan intensitas aktivitas luar. Pilih rute jauh dari lalu lintas atau berolahraga di ruang dengan udara lebih bersih.',
-      'Hentikan aktivitas bila muncul sesak, nyeri dada, atau pusing. Cari bantuan medis jika gejala berat atau menetap.',
-    ],
-  },
-  {
-    topic: 'Lingkungan',
-    title: 'Udara lebih bersih dimulai dari kebiasaan kita.',
-    minutes: 5,
-    audience: 'Semua orang',
-    summary: 'Perubahan kecil untuk mengurangi sumber polusi.',
-    sections: [
-      'Jangan membakar sampah. Pembakaran terbuka menghasilkan partikel dan zat pencemar yang membahayakan warga sekitar.',
-      'Bila memungkinkan, gunakan transportasi umum, berbagi kendaraan, berjalan, atau bersepeda ketika kualitas udara mendukung.',
-      'Dukung ruang hijau dan pengelolaan sampah. Pepohonan membantu lingkungan, tetapi tidak menggantikan pengurangan emisi dari sumbernya.',
-    ],
-  },
 ];
 
 export const initialLessons = baseLessons.map((item, index) => ({
@@ -97,7 +50,7 @@ export const initialLessons = baseLessons.map((item, index) => ({
   id: `lesson-${index}`,
   cover: '',
   status_publikasi: 'PUBLISHED',
-  views: [2840, 1960, 1750, 1320, 980, 760, 540][index],
+  views: [2840, 1960, 1750][index] || 1500,
 }));
 
 /**
@@ -126,6 +79,32 @@ export const initialLessonReviews = {
       isi_ulasan: 'Sangat membantu sebagai panduan sebelum mengajak anak beraktivitas di luar.',
       is_edited: false,
       updated_at: 'Kemarin',
+    },
+  ],
+  'lesson-1': [
+    {
+      id_ulasan: 'rev-3',
+      id_konten: 'lesson-1',
+      author: 'Ahmad Faiz',
+      handle: '@ahmadfaiz',
+      isOwner: false,
+      rating: 5,
+      isi_ulasan: 'Sangat informatif mengenai bahaya partikel halus PM2.5 bagi pernapasan.',
+      is_edited: false,
+      updated_at: '2 hari lalu',
+    },
+  ],
+  'lesson-2': [
+    {
+      id_ulasan: 'rev-4',
+      id_konten: 'lesson-2',
+      author: 'Dr. Hendra',
+      handle: '@drhendra',
+      isOwner: false,
+      rating: 5,
+      isi_ulasan: 'Panduan tepat untuk memilih masker N95 saat polusi udara sedang memburuk.',
+      is_edited: false,
+      updated_at: '3 hari lalu',
     },
   ],
 };

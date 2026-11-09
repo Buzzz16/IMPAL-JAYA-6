@@ -120,6 +120,27 @@ export async function togglePostLikeApi(postId) {
 }
 
 /**
+ * Memperbarui (edit) data post atau laporan komunitas di database
+ */
+export async function updatePostApi(postId, data) {
+  const cleanId = String(postId).replace(/^post-/, '').replace(/^rep-/, '');
+  return await apiRequest(`/komunitas/post/${cleanId}`, {
+    method: 'PUT',
+    body: JSON.stringify(data),
+  });
+}
+
+/**
+ * Menghapus post komunitas dari database
+ */
+export async function deletePostApi(postId) {
+  const cleanId = String(postId).replace(/^post-/, '').replace(/^rep-/, '');
+  return await apiRequest(`/komunitas/post/${cleanId}`, {
+    method: 'DELETE',
+  });
+}
+
+/**
  * Menambahkan komentar baru pada post komunitas ke Supabase
  */
 export async function addPostCommentApi(postId, text, authorName) {

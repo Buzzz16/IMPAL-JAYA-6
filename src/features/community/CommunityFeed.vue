@@ -72,6 +72,26 @@ const displayReports = computed(() => {
   }
   return cityFilteredReports.value;
 });
+
+function isReportOwner(entry) {
+  if (!entry) return false;
+  if (userProfileStore.role === 'ADMIN') return true;
+  if (!userProfileStore.id_akun && !userProfileStore.email && !userProfileStore.nama_lengkap) return false;
+
+  const postUserId = entry.id_user || entry.userId;
+  if (userProfileStore.id_akun && postUserId && String(postUserId) === String(userProfileStore.id_akun)) return true;
+  if (userProfileStore.email && entry.email && entry.email.toLowerCase() === userProfileStore.email.toLowerCase()) return true;
+
+  const currentUsername = (userProfileStore.username || '').replace(/^@/, '').toLowerCase().trim();
+  const reportUsername = (entry.user || '').replace(/^@/, '').toLowerCase().trim();
+  if (currentUsername && reportUsername && currentUsername === reportUsername) return true;
+
+  const currentName = (userProfileStore.nama_lengkap || '').toLowerCase().trim();
+  const reportAuthor = (entry.author || '').toLowerCase().trim();
+  if (currentName && reportAuthor && currentName === reportAuthor) return true;
+
+  return false;
+}
 </script>
 
 <template>
@@ -193,6 +213,12 @@ const displayReports = computed(() => {
           <div class="flex min-w-0 flex-1 flex-wrap items-baseline gap-x-2 gap-y-0.5">
             <strong class="text-sm font-bold text-[var(--ink)]">{{ entry.author || userProfileStore.nama_lengkap || 'Pengguna' }}</strong>
             <span class="text-xs text-[var(--muted)]">{{ entry.user || userProfileStore.username || '@pengguna' }}</span>
+            <span
+              v-if="isReportOwner(entry)"
+              class="rounded bg-[#285765]/10 px-1.5 py-0.5 text-[10px] font-bold text-[#285765]"
+            >
+              Laporan Anda
+            </span>
             <span class="text-xs text-[var(--muted)]">· {{ entry.time || 'Hari ini' }}</span>
           </div>
           <span
@@ -205,7 +231,11 @@ const displayReports = computed(() => {
         </div>
 
         <!-- Teks Deskripsi / Caption Laporan -->
-        <p class="feed-caption mt-3 whitespace-pre-wrap break-words text-sm sm:text-base font-medium leading-relaxed text-[var(--ink)]">
+        <p
+          class="feed-caption mt-3 whitespace-pre-wrap break-words text-sm sm:text-base font-medium leading-relaxed text-[var(--ink)] cursor-pointer hover:opacity-85 transition"
+          :title="'Klik untuk melihat detail & opsi laporan'"
+          @click="emit('select-report', entry.id)"
+        >
           {{ entry.caption }}
         </p>
 
@@ -281,6 +311,28 @@ const displayReports = computed(() => {
               />
             </svg>
             <span>{{ (entry.comments || []).length }}</span>
+          </button>
+          <button
+            v-if="isReportOwner(entry)"
+            type="button"
+            class="feed-action-btn ml-auto flex items-center gap-1.5 rounded-full bg-[var(--yellow)]/60 px-3 py-1.5 text-xs font-bold text-[#285765] transition hover:bg-[var(--yellow)] cursor-pointer"
+            aria-label="Edit laporan Anda"
+            @click="emit('select-report', entry.id)"
+          >
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true">
+              <path d="M12 20h9" />
+              <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />
+            </svg>
+            <span>Edit</span>
+          </button>
+          <button
+            v-else
+            type="button"
+            class="feed-action-btn ml-auto flex items-center gap-1.5 rounded-full bg-[var(--line)]/50 px-3 py-1.5 text-xs font-bold transition hover:bg-[var(--yellow)] cursor-pointer"
+            aria-label="Buka detail laporan"
+            @click="emit('select-report', entry.id)"
+          >
+            <span>Detail</span>
           </button>
         </div>
       </article>

@@ -506,11 +506,9 @@ async function handleHistoryPeriodChange(newP) {
 
 function saveReport(updated) {
   reports.value = reports.value.map((item) =>
-    item.id === updated.id ? updated : item
+    item.id === updated.id ? { ...item, ...updated } : item
   );
-  if (selectedReport.value && selectedReport.value.id === updated.id) {
-    selectedReport.value = updated;
-  }
+  saveCachedReports(reports.value);
 }
 
 async function handleToggleLike(updated) {
@@ -536,6 +534,11 @@ function handleCreateReportSaved(created) {
     'https://images.unsplash.com/photo-1555066657-4ea53882eaba?auto=format&fit=crop&w=1200&q=85';
   const norm = {
     ...created,
+    id_user: created.id_user || userProfileStore.id_akun,
+    userId: created.userId || created.id_user || userProfileStore.id_akun,
+    author: created.author || userProfileStore.nama_lengkap || 'Pengguna PoluSee',
+    user: created.user || userProfileStore.username || '@pengguna',
+    email: created.email || userProfileStore.email || '',
     image: img,
     photo: img,
     avatar:
@@ -549,7 +552,9 @@ function handleCreateReportSaved(created) {
 
 function handleDeleteActiveReport() {
   if (!activeReport.value) return;
-  reports.value = reports.value.filter((item) => item.id !== activeReport.value.id);
+  const targetId = activeReport.value.id;
+  reports.value = reports.value.filter((item) => item.id !== targetId);
+  saveCachedReports(reports.value);
   selectedReport.value = null;
 }
 

@@ -22,6 +22,7 @@ import edukasiRoutes from './src/modules/edukasi/edukasi.routes.js';
 import komunitasRoutes from './src/modules/komunitas/komunitas.routes.js';
 import profilRoutes from './src/modules/profil/profil.routes.js';
 import adminRoutes from './src/modules/admin/admin.routes.js';
+import { startAqiPeriodicLogger } from './src/services/iqairService.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -113,4 +114,5 @@ app.use((req, res, next) => {
 
 app.listen(PORT, () => {
   console.log(`[PoluSee Backend] Express.js server berjalan pada http://localhost:${PORT}`);
+  startAqiPeriodicLogger();
 });

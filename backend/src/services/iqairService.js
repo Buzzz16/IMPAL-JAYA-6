@@ -7,6 +7,7 @@
  */
 
 import { BACKEND_EXTERNAL_API } from '../config/externalApi.js';
+import { query } from '../config/db.js';
 
 // Koordinat referensi kota utama di Indonesia (Berbasis data stasiun nyata IQAir AirVisual API)
 export const KNOWN_CITIES = {
@@ -537,7 +538,8 @@ export async function getLiveIQAirData(city = 'Samarinda', lat = null, lon = nul
 
     liveResult = {
       source: 'IQAIR_LIVE_API',
-      city: rawData.city || city,
+      city: city, // Gunakan nama kota pencarian (misal: Surabaya) agar konsisten dengan filter riwayat
+      stationName: rawData.city || city, // Nama spesifik stasiun titik pantau (misal: Pacarkeling)
       state: rawData.state || cityInfo.province,
       country: rawData.country || 'Indonesia',
       stationCoordinates: {
@@ -623,6 +625,73 @@ export async function getLiveIQAirData(city = 'Samarinda', lat = null, lon = nul
   return liveResult;
 }
 
+// Konfigurasi Interval Pencatatan Riwayat (Setiap 4 jam sekali = 14.400.000 ms)
+export const LOG_INTERVAL_MS = 4 * 60 * 60 * 1000;
+
+// Mutex in-memory untuk mencegah race condition (pencatatan duplikat dalam milidetik yang sama)
+const activeRecordingLocks = new Set();
+
+/**
+ * Mencatat data kualitas udara aktual ke tabel riwayat_aqi_log dengan interval 4 jam
+ * dan menghapus otomatis data riwayat yang telah lebih lama dari 30 hari
+ */
+export async function recordLiveAQILog(liveData) {
+  if (!liveData || !liveData.city || liveData.aqi == null) return;
+  const cityName = liveData.city;
+  const lockKey = cityName.toLowerCase();
+
+  // Jika kota ini sedang dalam proses pencatatan, batalkan eksekusi duplikat
+  if (activeRecordingLocks.has(lockKey)) {
+    return;
+  }
+  activeRecordingLocks.add(lockKey);
+
+  const aqiVal = Number(liveData.aqi);
+  const pm25Val = liveData.pollutants?.pm25 != null ? Number(liveData.pollutants.pm25) : null;
+  const pm10Val = liveData.pollutants?.pm10 != null ? Number(liveData.pollutants.pm10) : null;
+  const tempVal = liveData.weather?.temperature != null ? Number(liveData.weather.temperature) : null;
+  const humidityVal = liveData.weather?.humidity != null ? Number(liveData.weather.humidity) : null;
+  const kategori = liveData.category || hitungKategoriAQI(aqiVal);
+
+  try {
+    // 1. Cek waktu pencatatan terakhir untuk kota ini
+    const lastLogRes = await query(
+      `SELECT id_log, nilai_aqi, waktu_catat 
+       FROM riwayat_aqi_log 
+       WHERE LOWER(lokasi) = LOWER($1) 
+       ORDER BY waktu_catat DESC 
+       LIMIT 1`,
+      [cityName]
+    );
+
+    const now = new Date();
+    if (lastLogRes && lastLogRes.rows && lastLogRes.rows.length > 0) {
+      const last = lastLogRes.rows[0];
+      const timeDiffMs = now.getTime() - new Date(last.waktu_catat).getTime();
+      // Lewati jika belum mencapai 4 jam sejak pencatatan terakhir
+      if (timeDiffMs < LOG_INTERVAL_MS) {
+        return;
+      }
+    }
+
+    // 2. Simpan titik baru ke tabel database
+    await query(
+      `INSERT INTO riwayat_aqi_log (lokasi, nilai_aqi, pm25, pm10, suhu, kelembaban, kategori, waktu_catat)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())`,
+      [cityName, aqiVal, pm25Val, pm10Val, tempVal, humidityVal, kategori]
+    );
+
+    // 3. Auto-delete data riwayat yang usianya lebih lama dari 30 hari
+    await query(
+      `DELETE FROM riwayat_aqi_log WHERE waktu_catat < NOW() - INTERVAL '30 days'`
+    );
+  } catch (err) {
+    console.warn(`[AQI Log DB Warning] Gagal mencatat riwayat untuk kota ${cityName}:`, err.message);
+  } finally {
+    activeRecordingLocks.delete(lockKey);
+  }
+}
+
 /**
  * Menghasilkan daftar stasiun pemantau nyata dengan koordinat GPS aktual
  */
@@ -675,75 +744,112 @@ export async function getLiveCityStations(city = 'Samarinda') {
 }
 
 /**
- * Menghasilkan riwayat data dinamis berbasis angka aktual IQAir
+ * Menghasilkan riwayat data dinamis berbasis pencatatan database aktual (interval 4 jam)
  */
 export async function getLiveHistoryAQI(city = 'Samarinda', period = '24 jam') {
   const liveData = await getLiveIQAirData(city);
   const currentAqi = liveData.aqi;
+
+  let intervalSql = "INTERVAL '24 hours'";
+  if (period === '7 hari') {
+    intervalSql = "INTERVAL '7 days'";
+  } else if (period === '30 hari') {
+    intervalSql = "INTERVAL '30 days'";
+  }
+
+  let dbRows = [];
+  try {
+    const res = await query(
+      `SELECT id_log, lokasi, nilai_aqi, pm25, pm10, suhu, kelembaban, kategori, waktu_catat
+       FROM riwayat_aqi_log
+       WHERE LOWER(lokasi) = LOWER($1)
+         AND waktu_catat >= NOW() - ${intervalSql}
+       ORDER BY waktu_catat ASC`,
+      [city]
+    );
+    if (res && res.rows) {
+      dbRows = res.rows;
+    }
+  } catch (err) {
+    console.warn(`[History DB Warning] Gagal membaca riwayat database untuk ${city}:`, err.message);
+  }
+
   const series = [];
 
-  if (period === '24 jam') {
-    // 24 jam ke belakang: variasi pola harian (puncak polusi jam sibuk pagi & sore)
-    const now = new Date();
-    for (let i = 23; i >= 0; i--) {
-      const pointTime = new Date(now.getTime() - i * 60 * 60 * 1000);
-      const hour = pointTime.getHours();
-
-      // Siklus polusi udara harian: lebih tinggi jam 06-09 & 17-20
-      let diurnalMultiplier = 1.0;
-      if (hour >= 6 && hour <= 9) diurnalMultiplier = 1.18;
-      else if (hour >= 17 && hour <= 20) diurnalMultiplier = 1.15;
-      else if (hour >= 12 && hour <= 15) diurnalMultiplier = 0.88;
-      else if (hour >= 1 && hour <= 4) diurnalMultiplier = 0.78;
-
-      // Variasi halus
-      const noise = (Math.sin(hour * 0.7) * 4);
-      const val = Math.max(15, Math.round(currentAqi * diurnalMultiplier + noise));
-
-      series.push({
-        waktu_ukur: pointTime.toISOString(),
-        label: `${String(hour).padStart(2, '0')}.00`,
-        nilai_aqi: val,
-        kategori_level: hitungKategoriAQI(val),
-        pm25: aqiKePm25(val),
-        pm10: Number((aqiKePm25(val) * 1.34).toFixed(1)),
+  if (dbRows.length > 0) {
+    if (period === '24 jam') {
+      dbRows.forEach((row) => {
+        const d = new Date(row.waktu_catat);
+        const hour = d.getHours();
+        const minute = d.getMinutes();
+        series.push({
+          waktu_ukur: d.toISOString(),
+          label: `${String(hour).padStart(2, '0')}.${String(minute).padStart(2, '0')}`,
+          nilai_aqi: Number(row.nilai_aqi),
+          kategori_level: row.kategori || hitungKategoriAQI(row.nilai_aqi),
+          pm25: row.pm25 != null ? Number(row.pm25) : aqiKePm25(row.nilai_aqi),
+          pm10: row.pm10 != null ? Number(row.pm10) : Number((aqiKePm25(row.nilai_aqi) * 1.34).toFixed(1)),
+        });
+      });
+    } else if (period === '7 hari') {
+      const days = ['Min', 'Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab'];
+      const byDay = {};
+      dbRows.forEach((row) => {
+        const d = new Date(row.waktu_catat);
+        const dayKey = d.toISOString().split('T')[0];
+        if (!byDay[dayKey]) byDay[dayKey] = [];
+        byDay[dayKey].push(row);
+      });
+      Object.keys(byDay).sort().forEach((dayKey) => {
+        const rows = byDay[dayKey];
+        const avgAqi = Math.round(rows.reduce((sum, r) => sum + Number(r.nilai_aqi), 0) / rows.length);
+        const d = new Date(rows[rows.length - 1].waktu_catat);
+        const isToday = new Date().toISOString().split('T')[0] === dayKey;
+        series.push({
+          waktu_ukur: d.toISOString(),
+          label: isToday ? 'Hari ini' : days[d.getDay()],
+          nilai_aqi: avgAqi,
+          kategori_level: hitungKategoriAQI(avgAqi),
+          pm25: aqiKePm25(avgAqi),
+          pm10: Number((aqiKePm25(avgAqi) * 1.34).toFixed(1)),
+        });
+      });
+    } else {
+      // 30 hari: agregasi rata-rata per hari
+      const byDay = {};
+      dbRows.forEach((row) => {
+        const d = new Date(row.waktu_catat);
+        const dayKey = d.toISOString().split('T')[0];
+        if (!byDay[dayKey]) byDay[dayKey] = [];
+        byDay[dayKey].push(row);
+      });
+      Object.keys(byDay).sort().forEach((dayKey) => {
+        const rows = byDay[dayKey];
+        const avgAqi = Math.round(rows.reduce((sum, r) => sum + Number(r.nilai_aqi), 0) / rows.length);
+        const d = new Date(rows[rows.length - 1].waktu_catat);
+        series.push({
+          waktu_ukur: d.toISOString(),
+          label: `${d.getDate()}/${d.getMonth() + 1}`,
+          nilai_aqi: avgAqi,
+          kategori_level: hitungKategoriAQI(avgAqi),
+          pm25: aqiKePm25(avgAqi),
+          pm10: Number((aqiKePm25(avgAqi) * 1.34).toFixed(1)),
+        });
       });
     }
-  } else if (period === '7 hari') {
-    const days = ['Min', 'Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab'];
-    const now = new Date();
-    for (let i = 6; i >= 0; i--) {
-      const pointTime = new Date(now.getTime() - i * 24 * 60 * 60 * 1000);
-      const dayName = days[pointTime.getDay()];
-      const dayOffset = Math.sin(i * 1.2) * 14;
-      const val = Math.max(20, Math.round(currentAqi + dayOffset));
+  }
 
-      series.push({
-        waktu_ukur: pointTime.toISOString(),
-        label: i === 0 ? 'Hari ini' : dayName,
-        nilai_aqi: val,
-        kategori_level: hitungKategoriAQI(val),
-        pm25: aqiKePm25(val),
-        pm10: Number((aqiKePm25(val) * 1.34).toFixed(1)),
-      });
-    }
-  } else {
-    // 30 hari
+  // Jika di database belum ada riwayat (misal baru pertama kali jalan), masukkan titik aktual saat ini
+  if (series.length === 0) {
     const now = new Date();
-    for (let i = 29; i >= 0; i--) {
-      const pointTime = new Date(now.getTime() - i * 24 * 60 * 60 * 1000);
-      const dayOffset = Math.sin(i * 0.4) * 22;
-      const val = Math.max(20, Math.round(currentAqi + dayOffset));
-
-      series.push({
-        waktu_ukur: pointTime.toISOString(),
-        label: `${pointTime.getDate()}/${pointTime.getMonth() + 1}`,
-        nilai_aqi: val,
-        kategori_level: hitungKategoriAQI(val),
-        pm25: aqiKePm25(val),
-        pm10: Number((aqiKePm25(val) * 1.34).toFixed(1)),
-      });
-    }
+    series.push({
+      waktu_ukur: now.toISOString(),
+      label: `${String(now.getHours()).padStart(2, '0')}.${String(now.getMinutes()).padStart(2, '0')}`,
+      nilai_aqi: currentAqi,
+      kategori_level: hitungKategoriAQI(currentAqi),
+      pm25: liveData.pollutants?.pm25 || aqiKePm25(currentAqi),
+      pm10: liveData.pollutants?.pm10 || Number((aqiKePm25(currentAqi) * 1.34).toFixed(1)),
+    });
   }
 
   const values = series.map((s) => s.nilai_aqi);
@@ -752,7 +858,7 @@ export async function getLiveHistoryAQI(city = 'Samarinda', period = '24 jam') {
   const avg = Math.round(values.reduce((a, b) => a + b, 0) / values.length);
 
   return {
-    source: 'IQAIR_SYNTHESIZED_HISTORY',
+    source: dbRows.length > 0 ? 'DATABASE_LOG_4_HOURLY' : 'LIVE_CURRENT_ONLY',
     city,
     period,
     currentAqi,
@@ -768,6 +874,36 @@ export async function getLiveHistoryAQI(city = 'Samarinda', period = '24 jam') {
           ? 'Kualitas udara fluktuatif bagi kelompok sensitif. Pantau terus angka sebelum beraktivitas berat.'
           : 'Secara umum kualitas udara berada di rentang aman.',
   };
+}
+
+/**
+ * Menjadwalkan background logger otomatis setiap 4 jam sekali untuk kota-kota utama
+ */
+export function startAqiPeriodicLogger() {
+  const cities = ['Samarinda', 'Balikpapan', 'Jakarta', 'Bandung', 'Surabaya', 'Semarang', 'Yogyakarta'];
+
+  async function runCycle() {
+    for (const city of cities) {
+      try {
+        const live = await getLiveIQAirData(city);
+        await recordLiveAQILog(live);
+        // Jeda 1.5 detik antar kota untuk menghormati rate limit IQAir API
+        await new Promise((resolve) => setTimeout(resolve, 1500));
+      } catch (err) {
+        console.warn(`[Periodic Logger] Gagal mencatat untuk ${city}:`, err.message);
+      }
+    }
+  }
+
+  // Siklus awal setelah 6 detik
+  setTimeout(() => {
+    runCycle().catch((e) => console.warn('[Initial Logger Error]:', e.message));
+  }, 6000);
+
+  // Jadwalkan pengulangan setiap 4 jam (14.400.000 ms)
+  setInterval(() => {
+    runCycle().catch((e) => console.warn('[4-Hour Logger Error]:', e.message));
+  }, LOG_INTERVAL_MS);
 }
 
 export function getSupportedCities() {

@@ -226,6 +226,10 @@ function y(val) {
 
 const points = computed(() => {
   if (data.value.length === 0) return '';
+  if (data.value.length === 1) {
+    const singleY = y(data.value[0].value);
+    return `50,${singleY} 930,${singleY}`;
+  }
   return data.value.map((item, index) => `${x(index)},${y(item.value)}`).join(' ');
 });
 

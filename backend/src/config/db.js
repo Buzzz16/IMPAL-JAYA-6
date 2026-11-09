@@ -75,6 +75,28 @@ export async function ensureTablesExist() {
         created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
       );
       CREATE INDEX IF NOT EXISTS idx_komentar_post_id ON komentar_post (id_post);
+
+      CREATE TABLE IF NOT EXISTS riwayat_aqi_log (
+        id_log SERIAL PRIMARY KEY,
+        lokasi VARCHAR(100) NOT NULL,
+        nilai_aqi INTEGER NOT NULL,
+        pm25 NUMERIC(6, 2),
+        pm10 NUMERIC(6, 2),
+        suhu NUMERIC(5, 2),
+        kelembaban NUMERIC(5, 2),
+        kategori VARCHAR(50),
+        waktu_catat TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+      CREATE INDEX IF NOT EXISTS idx_riwayat_aqi_lokasi_waktu ON riwayat_aqi_log (lokasi, waktu_catat);
+
+      -- Bersihkan log duplikat yang tercatat pada detik bersamaan
+      DELETE FROM riwayat_aqi_log a USING riwayat_aqi_log b
+      WHERE a.id_log > b.id_log
+        AND a.lokasi = b.lokasi
+        AND ABS(EXTRACT(EPOCH FROM (a.waktu_catat - b.waktu_catat))) < 120;
+
+      -- Normalisasi nama lokasi Surabaya dari stasiun Pacarkeling
+      UPDATE riwayat_aqi_log SET lokasi = 'Surabaya' WHERE lokasi = 'Pacarkeling';
     `);
   } catch (err) {
     console.warn('[Database Schema Warning]:', err.message);

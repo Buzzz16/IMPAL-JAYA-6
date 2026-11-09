@@ -94,7 +94,11 @@ const safeY = computed(() => Math.round(getY(50)));
 const linePath = computed(() => {
   if (isLoading.value) return '';
   const pts = activeSeries.value;
-  if (!pts || pts.length < 2) return '';
+  if (!pts || pts.length === 0) return '';
+  if (pts.length === 1) {
+    const y = Math.round(getY(pts[0].nilai_aqi));
+    return `M0 ${y} L${svgWidth} ${y}`;
+  }
   return pts
     .map((p, idx) => {
       const x = getX(idx);

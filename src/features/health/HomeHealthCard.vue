@@ -16,15 +16,23 @@ const props = defineProps({
   },
   aqi: {
     type: Number,
-    required: true,
+    default: null,
   },
   healthData: {
     type: Object,
     default: null,
   },
+  loading: {
+    type: Boolean,
+    default: false,
+  },
 });
 
 const emit = defineEmits(['open-health', 'open-profile']);
+
+const isLoading = computed(() => {
+  return props.loading || !props.healthData?.rekomendasi || props.aqi == null;
+});
 
 const rekom = computed(() => props.healthData?.rekomendasi || null);
 
@@ -48,23 +56,7 @@ const recommendations = computed(() => {
       },
     ];
   }
-  return [
-    {
-      icon: 'home',
-      title: props.aqi > 100 ? 'Utamakan aktivitas di dalam ruangan' : 'Nikmati aktivitas dengan bijak',
-      text: 'Kurangi aktivitas berat di luar ruangan jika udara memburuk.',
-    },
-    {
-      icon: 'mask',
-      title: 'Gunakan masker saat keluar',
-      text: 'Pilih masker N95 atau KN95 untuk menyaring partikel halus PM2.5.',
-    },
-    {
-      icon: 'user',
-      title: 'Lebih waspada untuk kelompok sensitif',
-      text: 'Anak-anak, lansia, dan penderita asma perlu membatasi paparan polusi.',
-    },
-  ];
+  return [];
 });
 </script>
 
@@ -83,18 +75,38 @@ const recommendations = computed(() => {
       </div>
       <AppIcon name="shield" />
     </div>
-    <div class="recommendation-intro">
-      <span class="mini-dot" />Disesuaikan otomatis dengan AQI {{ aqi }} di {{ city }} ({{ healthData?.kategori_rentan || 'Profil Umum' }})
-    </div>
-    <div v-for="r in recommendations" :key="r.title" class="recommendation">
-      <div class="recommendation-icon">
-        <AppIcon :name="r.icon" />
+
+    <!-- State Loading: Skeleton shimmer (tidak menampilkan data dummy Foto 1 saat reload F5) -->
+    <template v-if="isLoading">
+      <div class="recommendation-intro" aria-busy="true">
+        <div class="h-3 w-52 rounded bg-[#285765]/20 animate-pulse" />
       </div>
-      <div>
-        <h3>{{ r.title }}</h3>
-        <p>{{ r.text }}</p>
+      <div v-for="i in 3" :key="i" class="recommendation animate-pulse">
+        <div class="recommendation-icon bg-[#285765]/10 flex items-center justify-center">
+          <div class="h-4 w-4 rounded bg-[#285765]/25" />
+        </div>
+        <div class="flex-1 space-y-2">
+          <div class="h-4 w-1/3 rounded bg-[#285765]/25" />
+          <div class="h-3 w-4/5 rounded bg-[#285765]/15" />
+        </div>
       </div>
-    </div>
+    </template>
+
+    <!-- State Siap: Menampilkan rekomendasi dinamis sesuai AQI kota (Foto 2) -->
+    <template v-else>
+      <div class="recommendation-intro">
+        <span class="mini-dot" />Disesuaikan otomatis dengan AQI {{ aqi }} di {{ city }} ({{ healthData?.kategori_rentan || 'Umum' }})
+      </div>
+      <div v-for="r in recommendations" :key="r.title" class="recommendation">
+        <div class="recommendation-icon">
+          <AppIcon :name="r.icon" />
+        </div>
+        <div>
+          <h3>{{ r.title }}</h3>
+          <p>{{ r.text }}</p>
+        </div>
+      </div>
+    </template>
     <div class="personalization-wrap">
       <button class="text-link personalization" type="button" @click.stop="emit('open-profile')">
         <span>Personalisasi profil &amp; kelompok rentan</span>

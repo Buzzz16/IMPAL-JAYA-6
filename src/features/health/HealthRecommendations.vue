@@ -15,11 +15,15 @@ const props = defineProps({
   },
   aqi: {
     type: Number,
-    required: true,
+    default: null,
   },
   healthData: {
     type: Object,
     default: null,
+  },
+  loading: {
+    type: Boolean,
+    default: false,
   },
 });
 
@@ -32,21 +36,25 @@ onMounted(() => {
   window.scrollTo(0, 0);
 });
 
-const good = computed(() => props.aqi <= 50);
-const moderate = computed(() => props.aqi > 50 && props.aqi <= 100);
+const isLoading = computed(() => props.loading || !props.healthData?.rekomendasi || props.aqi == null);
+
+const good = computed(() => (props.aqi ?? 0) <= 50);
+const moderate = computed(() => (props.aqi ?? 0) > 50 && (props.aqi ?? 0) <= 100);
 
 const status = computed(() =>
-  good.value
-    ? 'Baik'
-    : moderate.value
-      ? 'Sedang'
-      : props.aqi <= 150
-        ? 'Tidak sehat bagi kelompok sensitif'
-        : props.aqi <= 200
-          ? 'Tidak sehat'
-          : props.aqi <= 300
-            ? 'Sangat tidak sehat'
-            : 'Berbahaya'
+  isLoading.value
+    ? 'Memuat data kualitas udara…'
+    : good.value
+      ? 'Baik'
+      : moderate.value
+        ? 'Sedang'
+        : (props.aqi ?? 0) <= 150
+          ? 'Tidak sehat bagi kelompok sensitif'
+          : (props.aqi ?? 0) <= 200
+            ? 'Tidak sehat'
+            : (props.aqi ?? 0) <= 300
+              ? 'Sangat tidak sehat'
+              : 'Berbahaya'
 );
 
 const recommendations = computed(() => {
@@ -227,7 +235,18 @@ const guides = [
       <span class="eyebrow">ENAM LANGKAH UNTUK HARI INI</span>
       <h2>Perlindungan dimulai dari kebiasaan.</h2>
     </div>
-    <div class="health-grid">
+    <div v-if="isLoading" class="health-grid">
+      <article v-for="i in 4" :key="i" class="health-card animate-pulse">
+        <div class="health-card-top">
+          <span class="health-icon bg-[#285765]/10" />
+          <span class="eyebrow">0{{ i }}</span>
+        </div>
+        <div class="h-5 w-2/3 rounded bg-[#285765]/20 my-2" />
+        <div class="h-3.5 w-full rounded bg-[#285765]/15 my-1" />
+        <div class="h-3.5 w-4/5 rounded bg-[#285765]/15 my-1" />
+      </article>
+    </div>
+    <div v-else class="health-grid">
       <article v-for="(item, index) in recommendations" :key="item.icon" class="health-card">
         <div class="health-card-top">
           <span class="health-icon">

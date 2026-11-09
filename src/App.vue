@@ -240,7 +240,7 @@ function saveCachedReports(items) {
 
 const initialCachedReports = getCachedReports();
 const reports = ref(initialCachedReports);
-const loadingData = ref(false);
+const loadingData = ref(true);
 const loadingFeed = ref(initialCachedReports.length === 0);
 
 // Live Device Location Tracking State
@@ -795,6 +795,7 @@ onBeforeUnmount(() => {
           :city="city"
           :aqi="aqi"
           :health-data="healthData"
+          :loading="loadingData || !healthData || aqi == null"
           @back="goHome"
           @profile="navigateTo('profile')"
         />
@@ -874,6 +875,7 @@ onBeforeUnmount(() => {
               <HistorySummaryCard
                 :period="period"
                 :history-data="historyData"
+                :loading="loadingData || !historyData || !historyData?.series?.length"
                 @update:period="period = $event"
                 @open-history="page = 'history-detail'"
               />
@@ -896,6 +898,7 @@ onBeforeUnmount(() => {
                 :city="city"
                 :aqi="aqi"
                 :health-data="healthData"
+                :loading="loadingData || !healthData || aqi == null"
                 @open-health="
                   page = 'health-detail';
                   window.scrollTo(0, 0);

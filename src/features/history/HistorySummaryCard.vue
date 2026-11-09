@@ -19,6 +19,10 @@ const props = defineProps({
     type: Object,
     default: null,
   },
+  loading: {
+    type: Boolean,
+    default: false,
+  },
 });
 
 const emit = defineEmits(['update:period', 'open-history']);
@@ -28,37 +32,29 @@ const hoverPoint = ref(null);
 const hoverCoords = ref({ x: 0, y: 0 });
 const svgContainer = ref(null);
 
-// Ambil deret data dinamis dari backend atau susun data realistis jika belum ada
+const isLoading = computed(() => {
+  return (
+    props.loading ||
+    !props.historyData ||
+    !Array.isArray(props.historyData?.series) ||
+    props.historyData.series.length === 0
+  );
+});
+
+// Ambil deret data dinamis dari backend hanya ketika data asli telah selesai dimuat
 const activeSeries = computed(() => {
+  if (isLoading.value) return [];
   if (props.historyData?.series && props.historyData.series.length > 0) {
     return props.historyData.series;
   }
-  const count = props.period === '24 jam' ? 24 : props.period === '7 hari' ? 7 : 30;
-  const baseAqi = props.historyData?.currentAqi || 100;
-  return Array.from({ length: count }, (_, i) => {
-    let multiplier = 1.0;
-    if (props.period === '24 jam') {
-      if (i >= 6 && i <= 9) multiplier = 1.18;
-      else if (i >= 17 && i <= 20) multiplier = 1.15;
-      else if (i >= 12 && i <= 15) multiplier = 0.88;
-      else multiplier = 0.82;
-    } else {
-      multiplier = 1.0 + Math.sin(i * 0.8) * 0.18;
-    }
-    const val = Math.max(15, Math.round(baseAqi * multiplier + Math.sin(i) * 5));
-    return {
-      label: props.period === '24 jam' ? `${String(i).padStart(2, '0')}.00` : props.period === '7 hari' ? ['Min', 'Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab'][i % 7] : `${i + 1} Hari`,
-      nilai_aqi: val,
-      pm25: Number((val * 0.369).toFixed(1)),
-      kategori_level: getAqiCategory(val),
-    };
-  });
+  return [];
 });
 
 const values = computed(() => activeSeries.value.map((s) => Number(s.nilai_aqi || 0)));
 
 // Skala dinamis batas atas Y (Ceiling)
 const ceiling = computed(() => {
+  if (isLoading.value || values.value.length === 0) return 150;
   const max = Math.max(...values.value, 60);
   if (max <= 90) return 100;
   if (max <= 140) return 150;
@@ -96,11 +92,9 @@ const safeY = computed(() => Math.round(getY(50)));
 
 // Titik koordinat jalur garis
 const linePath = computed(() => {
+  if (isLoading.value) return '';
   const pts = activeSeries.value;
-  if (!pts || pts.length < 2) {
-    const yVal = Math.round(getY(pts?.[0]?.nilai_aqi || 50));
-    return `M0 ${yVal} L${svgWidth} ${yVal}`;
-  }
+  if (!pts || pts.length < 2) return '';
   return pts
     .map((p, idx) => {
       const x = getX(idx);
@@ -111,12 +105,13 @@ const linePath = computed(() => {
 });
 
 const areaPath = computed(() => {
+  if (isLoading.value || !linePath.value) return '';
   return `${linePath.value} L${svgWidth} ${chartBottom} L0 ${chartBottom} Z`;
 });
 
 // Titik data terakhir (titik real-time berdenyut)
 const lastPoint = computed(() => {
-  if (activeSeries.value.length === 0) return null;
+  if (isLoading.value || activeSeries.value.length === 0) return null;
   return activeSeries.value[activeSeries.value.length - 1];
 });
 
@@ -130,6 +125,7 @@ const lastPointCoords = computed(() => {
 
 // Label sumbu X
 const xLabels = computed(() => {
+  if (isLoading.value) return [];
   const pts = activeSeries.value;
   if (pts.length === 0) return [];
   if (props.period === '24 jam') {
@@ -145,25 +141,25 @@ const xLabels = computed(() => {
   return Array.from(new Set(labels));
 });
 
-// Statistik Ringkasan Dinamis
+// Statistik Ringkasan Dinamis (Menampilkan '--' saat loading seperti kartu kualitas udara)
 const avgAqi = computed(() => {
-  if (values.value.length === 0) return 74;
+  if (isLoading.value || values.value.length === 0) return '--';
   return Math.round(values.value.reduce((a, b) => a + b, 0) / values.value.length);
 });
 
 const maxAqi = computed(() => {
-  if (values.value.length === 0) return 89;
+  if (isLoading.value || values.value.length === 0) return '--';
   return Math.max(...values.value);
 });
 
 const minAqi = computed(() => {
-  if (values.value.length === 0) return 59;
+  if (isLoading.value || values.value.length === 0) return '--';
   return Math.min(...values.value);
 });
 
 // Warna tema grafik dinamis sesuai nilai AQI rata-rata
 const chartTheme = computed(() => {
-  const aqi = avgAqi.value;
+  const aqi = typeof avgAqi.value === 'number' ? avgAqi.value : 75;
   if (aqi <= 50) {
     return {
       stroke: '#589b63',
@@ -207,7 +203,7 @@ const chartTheme = computed(() => {
 });
 
 function handleMouseMove(event) {
-  if (!svgContainer.value || activeSeries.value.length === 0) return;
+  if (isLoading.value || !svgContainer.value || activeSeries.value.length === 0) return;
   const rect = svgContainer.value.getBoundingClientRect();
   const mouseX = Math.max(0, Math.min(event.clientX - rect.left, rect.width));
   const ratio = mouseX / rect.width;
@@ -274,6 +270,14 @@ function handleCardClick(event) {
         @touchstart.passive="handleMouseMove"
         @touchmove.passive="handleMouseMove"
       >
+        <!-- Overlay status saat memuat data (mencegah kedipan data dummy / angka palsu) -->
+        <div v-if="isLoading" class="chart-loading-overlay">
+          <div class="chart-loading-indicator">
+            <span class="mini-spinner" />
+            <span>Memuat riwayat kualitas udara…</span>
+          </div>
+        </div>
+
         <svg viewBox="0 0 650 180" preserveAspectRatio="none" role="img" :aria-label="`Grafik AQI ${period}`">
           <defs>
             <linearGradient id="area-dyn" x1="0" x2="0" y1="0" y2="1">
@@ -305,61 +309,63 @@ function handleCardClick(event) {
             stroke-dasharray="6 4"
           />
 
-          <!-- Area & Garis Grafik Tren -->
-          <path :d="areaPath" fill="url(#area-dyn)" />
-          <path
-            :d="linePath"
-            fill="none"
-            :stroke="chartTheme.stroke"
-            stroke-width="2.6"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-          />
-
-          <!-- Titik Terakhir dengan Animasi Denyut (Live Pulse) -->
-          <g v-if="lastPoint">
-            <circle
-              :cx="lastPointCoords.x"
-              :cy="lastPointCoords.y"
-              r="9"
-              class="pulse-ring"
+          <!-- Area & Garis Grafik Tren (Hanya jika data asli telah selesai dimuat) -->
+          <template v-if="!isLoading && linePath">
+            <path :d="areaPath" fill="url(#area-dyn)" />
+            <path
+              :d="linePath"
+              fill="none"
               :stroke="chartTheme.stroke"
+              stroke-width="2.6"
+              stroke-linecap="round"
+              stroke-linejoin="round"
             />
-            <circle
-              :cx="lastPointCoords.x"
-              :cy="lastPointCoords.y"
-              r="4.5"
-              :fill="chartTheme.stroke"
-              stroke="#faf9f3"
-              stroke-width="2"
-            />
-          </g>
 
-          <!-- Titik & Garis Indikator Hover Interaktif -->
-          <g v-if="hoverPoint">
-            <line
-              :x1="hoverCoords.x"
-              :x2="hoverCoords.x"
-              y1="15"
-              y2="165"
-              stroke="var(--ink)"
-              stroke-opacity="0.3"
-              stroke-dasharray="3 3"
-            />
-            <circle
-              :cx="hoverCoords.x"
-              :cy="hoverCoords.y"
-              r="5.5"
-              :fill="chartTheme.stroke"
-              stroke="#ffffff"
-              stroke-width="2.5"
-            />
-          </g>
+            <!-- Titik Terakhir dengan Animasi Denyut (Live Pulse) -->
+            <g v-if="lastPoint">
+              <circle
+                :cx="lastPointCoords.x"
+                :cy="lastPointCoords.y"
+                r="9"
+                class="pulse-ring"
+                :stroke="chartTheme.stroke"
+              />
+              <circle
+                :cx="lastPointCoords.x"
+                :cy="lastPointCoords.y"
+                r="4.5"
+                :fill="chartTheme.stroke"
+                stroke="#faf9f3"
+                stroke-width="2"
+              />
+            </g>
+
+            <!-- Titik & Garis Indikator Hover Interaktif -->
+            <g v-if="hoverPoint">
+              <line
+                :x1="hoverCoords.x"
+                :x2="hoverCoords.x"
+                y1="15"
+                y2="165"
+                stroke="var(--ink)"
+                stroke-opacity="0.3"
+                stroke-dasharray="3 3"
+              />
+              <circle
+                :cx="hoverCoords.x"
+                :cy="hoverCoords.y"
+                r="5.5"
+                :fill="chartTheme.stroke"
+                stroke="#ffffff"
+                stroke-width="2.5"
+              />
+            </g>
+          </template>
         </svg>
 
         <!-- Tooltip Popover Mengikuti Kursor -->
         <div
-          v-if="hoverPoint"
+          v-if="!isLoading && hoverPoint"
           class="chart-tooltip-floating"
           :style="{
             left: `${(hoverCoords.x / 650) * 100}%`,
@@ -377,7 +383,16 @@ function handleCardClick(event) {
 
       <!-- Sumbu X Dinamis -->
       <div class="chart-x">
-        <span v-for="x in xLabels" :key="x">{{ x }}</span>
+        <template v-if="isLoading">
+          <span class="opacity-20">--:--</span>
+          <span class="opacity-20">--:--</span>
+          <span class="opacity-20">--:--</span>
+          <span class="opacity-20">--:--</span>
+          <span class="opacity-20">--:--</span>
+        </template>
+        <template v-else>
+          <span v-for="x in xLabels" :key="x">{{ x }}</span>
+        </template>
       </div>
     </div>
 
@@ -456,5 +471,38 @@ function handleCardClick(event) {
   font-size: 9.5px;
   color: #556b2f;
   margin-top: 1px;
+}
+.chart-loading-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 5;
+  pointer-events: none;
+}
+.chart-loading-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  background: rgba(248, 248, 241, 0.9);
+  padding: 5px 12px;
+  border-radius: 20px;
+  border: 1px solid var(--line);
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--muted);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+.mini-spinner {
+  width: 9px;
+  height: 9px;
+  border: 2px solid var(--muted);
+  border-top-color: var(--blue);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin {
+  to { transform: rotate(360deg); }
 }
 </style>

@@ -1,8 +1,9 @@
 <script setup>
 /**
  * ============================================================================
- * MODAL BACA CEPAT ARTIKEL BERANDA
+ * MODUL BACA CEPAT ARTIKEL BERANDA (ARTICLE QUICK MODAL)
  * File: src/features/education/ArticleQuickModal.vue
+ * Desain Editorial PoluSee: Elegan, Proporsional & Responsif
  * ============================================================================
  */
 import { computed } from 'vue';
@@ -20,58 +21,208 @@ const props = defineProps({
   },
 });
 
-const emit = defineEmits(['close', 'next']);
+const emit = defineEmits(['close', 'next', 'prev', 'open-education']);
+
+const totalArticles = computed(() => {
+  if (props.lessons && props.lessons.length > 0) {
+    return props.lessons.length;
+  }
+  return HOME_ARTICLES.length;
+});
 
 const activeArticle = computed(() => {
   if (props.articleIndex === null) return null;
+
   if (props.lessons && props.lessons[props.articleIndex]) {
     const l = props.lessons[props.articleIndex];
+    const category = (l.topic || l.kategori_topik || 'Kenali Udara').toUpperCase();
+    const title = l.title || l.judul_konten || 'Materi Edukasi Udara';
+    const description = l.summary || (l.isi_materi ? l.isi_materi.slice(0, 160) + '...' : '');
+
+    let bodyText = '';
+    if (Array.isArray(l.sections) && l.sections.length > 0) {
+      bodyText = l.sections.join('\n\n');
+    } else if (l.isi_materi) {
+      bodyText = l.isi_materi;
+    } else {
+      bodyText = l.summary || '';
+    }
+
+    const type = props.articleIndex === 0 ? 'aqi' : props.articleIndex === 1 ? 'mask' : 'photo';
+    const cover = l.cover || l.media_url || 'https://images.unsplash.com/photo-1476231682828-37e571bc172f?auto=format&fit=crop&w=1200&q=80';
+    const time = `${l.minutes || 4} mnt baca`;
+
     return {
-      category: l.topic,
-      title: l.title,
-      description: l.summary,
-      body: Array.isArray(l.sections) ? l.sections.join('\n\n') : l.summary,
+      category,
+      title,
+      description,
+      body: bodyText,
+      type,
+      cover,
+      time,
     };
   }
-  return HOME_ARTICLES[props.articleIndex] || null;
+
+  const fallback = HOME_ARTICLES[props.articleIndex] || HOME_ARTICLES[0];
+  return {
+    category: (fallback.category || 'KENALI UDARAMU').toUpperCase(),
+    title: fallback.title,
+    description: fallback.description,
+    body: fallback.body,
+    type: fallback.type || 'aqi',
+    cover: 'https://images.unsplash.com/photo-1476231682828-37e571bc172f?auto=format&fit=crop&w=1200&q=80',
+    time: fallback.time || '4 mnt baca',
+  };
 });
 
-const totalArticles = computed(() => (props.lessons?.length || HOME_ARTICLES.length));
+function handlePrev() {
+  const nextIdx = (props.articleIndex - 1 + totalArticles.value) % totalArticles.value;
+  emit('next', nextIdx);
+}
+
+function handleNext() {
+  const nextIdx = (props.articleIndex + 1) % totalArticles.value;
+  emit('next', nextIdx);
+}
 </script>
 
 <template>
   <div
     v-if="articleIndex !== null && activeArticle"
-    class="modal-backdrop"
+    class="modal-backdrop !bg-[#263b3e]/60 !backdrop-blur-xs flex items-center justify-center p-4 z-50 transition-opacity"
     @click="emit('close')"
   >
     <section
-      class="modal"
+      class="modal !max-w-[700px] !w-full !max-h-[90vh] !overflow-y-auto !p-0 !bg-[#f8f8f1] !border !border-[#263b3e] !shadow-[8px_8px_0_#edce7e] !rounded-none relative flex flex-col"
       role="dialog"
       aria-modal="true"
       :aria-label="activeArticle.title"
       @click.stop
     >
-      <button
-        class="modal-close icon-button"
-        aria-label="Tutup artikel"
-        @click="emit('close')"
-      >
-        <AppIcon name="close" />
-      </button>
-      <span class="eyebrow">{{ activeArticle.category }}</span>
-      <h2>{{ activeArticle.title }}</h2>
-      <p>{{ activeArticle.description }}</p>
-      <p style="white-space: pre-line;">{{ activeArticle.body }}</p>
-      <div class="article-note">
-        <AppIcon name="leaf" />Langkah kecilmu hari ini berarti untuk udara esok.
+      <!-- Header Visual Banner -->
+      <div class="relative w-full h-44 sm:h-52 bg-[#e8eee4] border-b border-[#263b3e] overflow-hidden flex items-center justify-center">
+        <!-- Visual AQI -->
+        <div v-if="activeArticle.type === 'aqi'" class="w-full h-full flex flex-col items-center justify-center bg-[#f1e7c9] p-6 select-none">
+          <span class="text-[11px] font-extrabold tracking-[0.2em] text-[#7d795d] uppercase mb-1">Air Quality Index</span>
+          <span class="font-serif text-5xl sm:text-6xl font-black tracking-tight text-[#285765]">AQI<span class="text-[#bda657]">?</span></span>
+          <div class="flex gap-1.5 mt-3">
+            <span class="w-6 h-1.5 bg-[#4caf50]"></span>
+            <span class="w-6 h-1.5 bg-[#ffeb3b]"></span>
+            <span class="w-6 h-1.5 bg-[#ff9800]"></span>
+            <span class="w-6 h-1.5 bg-[#f44336]"></span>
+            <span class="w-6 h-1.5 bg-[#9c27b0]"></span>
+          </div>
+        </div>
+
+        <!-- Visual Masker -->
+        <div v-else-if="activeArticle.type === 'mask'" class="w-full h-full flex flex-col items-center justify-center bg-[#dce5e7] p-6 text-[#285765] select-none">
+          <AppIcon name="mask" :size="75" />
+          <span class="text-[11px] font-extrabold tracking-[0.25em] text-[#285765] mt-2 uppercase">Breathe Safer · Lindungi Diri</span>
+        </div>
+
+        <!-- Visual Photo Nature / Hutan -->
+        <div v-else class="w-full h-full relative">
+          <img
+            :src="activeArticle.cover"
+            :alt="activeArticle.title"
+            class="w-full h-full object-cover"
+          />
+          <div class="absolute inset-0 bg-gradient-to-t from-[#263b3e]/80 via-transparent to-transparent flex items-end p-4">
+            <span class="text-xs font-semibold text-[#f8f8f1] tracking-wider uppercase bg-[#285765]/80 px-2.5 py-1 rounded">
+              PoluSee Edukasi Ruang Hijau
+            </span>
+          </div>
+        </div>
+
+        <!-- Tombol Tutup Silang di Sudut Kanan Atas Banner -->
+        <button
+          type="button"
+          class="absolute top-3 right-3 w-8 h-8 rounded-full bg-[#f8f8f1] text-[#263b3e] border border-[#263b3e] hover:bg-[#edce7e] transition flex items-center justify-center cursor-pointer shadow-xs z-10"
+          aria-label="Tutup artikel"
+          title="Tutup (Esc)"
+          @click="emit('close')"
+        >
+          <AppIcon name="close" :size="16" />
+        </button>
       </div>
-      <button
-        class="text-link"
-        @click="emit('next', (articleIndex + 1) % totalArticles)"
-      >
-        Artikel berikutnya <AppIcon name="arrow" :size="18" />
-      </button>
+
+      <!-- Konten Artikel -->
+      <div class="p-6 sm:p-8 flex-1">
+        <!-- Top Meta: Badge Kategori & Waktu Baca -->
+        <div class="flex items-center justify-between gap-3 mb-3">
+          <span class="inline-block px-2.5 py-0.5 rounded text-[11px] font-bold tracking-wider uppercase bg-[#edce7e] text-[#285765] border border-[#d8b869]">
+            {{ activeArticle.category }}
+          </span>
+          <span class="text-xs font-medium text-[#7d8580] flex items-center gap-1.5">
+            <AppIcon name="clock" :size="13" />
+            {{ activeArticle.time }}
+          </span>
+        </div>
+
+        <!-- Judul Artikel -->
+        <h2 class="text-2xl sm:text-3xl font-extrabold text-[#263b3e] leading-tight tracking-tight mb-4">
+          {{ activeArticle.title }}
+        </h2>
+
+        <!-- Ringkasan Intisari (Lead Paragraph) -->
+        <div
+          v-if="activeArticle.description && activeArticle.description !== activeArticle.title"
+          class="p-3.5 bg-[#edf1ea] border-l-4 border-[#285765] text-sm sm:text-base font-semibold text-[#285765] leading-relaxed mb-5"
+        >
+          {{ activeArticle.description }}
+        </div>
+
+        <!-- Isi Pembahasan Artikel -->
+        <div class="prose text-[#33443d] text-sm sm:text-[15px] leading-relaxed space-y-4 font-normal">
+          <p
+            v-for="(para, pIdx) in activeArticle.body.split('\n\n').filter(p => p.trim())"
+            :key="pIdx"
+            class="leading-relaxed"
+          >
+            {{ para }}
+          </p>
+        </div>
+
+        <!-- Kotak Catatan / Insight Hijau -->
+        <div class="mt-6 p-4 rounded-lg bg-[#eef6ed] border border-[#b8dcbb] flex items-center gap-3 text-xs sm:text-sm text-[#245e36] font-medium">
+          <span class="text-base">🍃</span>
+          <span>Langkah kecilmu hari ini berarti untuk udara esok yang lebih bersih dan sehat.</span>
+        </div>
+      </div>
+
+      <!-- Footer Bar: Navigasi Antar Artikel & CTA Selengkapnya -->
+      <div class="p-4 sm:px-8 sm:py-4 bg-[#f0f2eb] border-t border-[#ced2c8] flex flex-wrap items-center justify-between gap-3">
+        <!-- Navigasi Geser Artikel -->
+        <div class="flex items-center gap-2 text-xs font-semibold">
+          <button
+            type="button"
+            class="flex items-center gap-1 px-3 py-1.5 rounded border border-[#aeb9ae] bg-white text-[#285765] hover:bg-[#285765] hover:text-white transition cursor-pointer"
+            @click="handlePrev"
+          >
+            ← Sebelumnya
+          </button>
+          <span class="text-[#7d8580] px-1 text-[11px]">
+            {{ (articleIndex + 1) }} / {{ totalArticles }}
+          </span>
+          <button
+            type="button"
+            class="flex items-center gap-1 px-3 py-1.5 rounded border border-[#aeb9ae] bg-white text-[#285765] hover:bg-[#285765] hover:text-white transition cursor-pointer"
+            @click="handleNext"
+          >
+            Berikutnya →
+          </button>
+        </div>
+
+        <!-- Tombol Aksi: Buka Halaman Edukasi Lengkap -->
+        <button
+          type="button"
+          class="flex items-center gap-1.5 px-4 py-2 rounded bg-[#285765] text-[#f8f8f1] text-xs font-bold hover:bg-[#1f434e] transition cursor-pointer shadow-xs"
+          @click="emit('open-education')"
+        >
+          <span>Jelajahi di Ruang Edukasi</span>
+          <AppIcon name="arrow" :size="14" />
+        </button>
+      </div>
     </section>
   </div>
 </template>

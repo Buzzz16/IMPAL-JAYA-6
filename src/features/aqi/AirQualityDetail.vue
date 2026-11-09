@@ -12,7 +12,7 @@
  */
 import { ref, computed, onMounted } from 'vue';
 import WeatherIcon from '../../components/common/WeatherIcon.vue';
-import { getAqiTheme, getAqiCategory, getForecastAqiStyle, getForecastAqiClass } from './aqiData';
+import { getAqiTheme, getAqiCategory } from './aqiData';
 
 const props = defineProps({
   city: {
@@ -31,11 +31,7 @@ const props = defineProps({
 
 const emit = defineEmits(['back']);
 
-const day = ref(0);
 const heading = ref(null);
-const days = ['Hari ini', 'Besok', 'Lusa'];
-const dailyOffsets = [0, -22, -31, -12, -40, -28, -43];
-const dailyDays = ['Hari ini', 'Besok', 'Lusa', 'Hari ke-4', 'Hari ke-5', 'Hari ke-6', 'Hari ke-7'];
 
 const theme = computed(() => getAqiTheme(props.aqi));
 
@@ -63,29 +59,6 @@ const pm10 = computed(() => {
   if (props.realtimeData?.pm10 != null) return Number(props.realtimeData.pm10);
   return Number((pm25.value * 1.34).toFixed(1));
 });
-
-const hourly = computed(() =>
-  Array.from({ length: 24 }, (_, hour) => ({
-    hour,
-    aqi: Math.max(
-      35,
-      Math.round(
-        props.aqi - day.value * 16 + (Math.sin((hour - 8) / 4) - Math.sin(-2)) * 13
-      )
-    ),
-    temperature: Math.round(
-      (props.realtimeData?.temperature ? props.realtimeData.temperature - 2 : 28) +
-        Math.sin((hour - 8) / 4) * 3
-    ),
-    wind: Math.round(
-      (props.realtimeData?.windSpeedKmh ? Math.round(props.realtimeData.windSpeedKmh) : 9) +
-        Math.sin(hour / 3) * 4
-    ),
-    humidity: Math.round(
-      (props.realtimeData?.humidity ?? 76) - Math.sin((hour - 8) / 4) * 10
-    ),
-  }))
-);
 
 const pollutants = computed(() => [
   ['PM2.5', 'Partikel halus (≤ 2,5 µm)', pm25.value],
@@ -235,105 +208,6 @@ const weatherItems = computed(() => [
               : 'Udara relatif lebih baik. Tetap perhatikan kondisi tubuh, terutama jika memiliki gangguan pernapasan.'
           }}
         </p>
-      </div>
-    </section>
-
-    <!-- Rencanakan Aktivitasmu / Prakiraan Per Jam -->
-    <section class="detail-section">
-      <div class="detail-section-heading">
-        <div>
-          <span class="eyebrow">RENCANAKAN AKTIVITASMU</span>
-          <h2>Prakiraan per jam.</h2>
-          <p>Simulasi AQI, suhu, angin, dan kelembapan di {{ city }}.</p>
-        </div>
-        <div class="segmented" aria-label="Hari prakiraan">
-          <button
-            v-for="(label, index) in days"
-            :key="label"
-            type="button"
-            :class="day === index ? 'selected' : ''"
-            :aria-pressed="day === index"
-            @click="day = index"
-          >
-            {{ label }}
-          </button>
-        </div>
-      </div>
-      <div
-        class="hourly-scroll"
-        tabindex="0"
-        role="region"
-        :aria-label="`Prakiraan per jam ${days[day]}, gulir untuk melihat semua jam`"
-      >
-        <div class="hourly-grid">
-          <div v-for="item in hourly" :key="item.hour" class="hourly-item">
-            <span>{{ item.hour === 0 && day === 0 ? 'Sekarang' : `${String(item.hour).padStart(2, '0')}:00` }}</span>
-            <strong
-              :class="['forecast-aqi', getForecastAqiClass(item.aqi)]"
-              :style="getForecastAqiStyle(item.aqi)"
-              :title="`${item.aqi} AQI · ${category(item.aqi)}`"
-            >
-              {{ item.aqi }}<small style="color: inherit; opacity: 0.85;">AQI</small>
-            </strong>
-            <WeatherIcon />
-            <b>{{ item.temperature }}°</b>
-            <WeatherIcon kind="wind" />
-            <span>{{ item.wind }} km/h</span>
-            <WeatherIcon kind="humidity" />
-            <span>{{ item.humidity }}%</span>
-          </div>
-        </div>
-      </div>
-      <small class="detail-caption">
-        Geser untuk melihat 24 jam · Semua waktu mengikuti lokasi terpilih · Data ilustratif
-      </small>
-    </section>
-
-    <!-- Gambaran Pekan Ini / Prakiraan Harian (7 Hari) -->
-    <section class="detail-section">
-      <div class="detail-section-heading">
-        <div>
-          <span class="eyebrow">GAMBARAN PEKAN INI</span>
-          <h2>Prakiraan harian.</h2>
-        </div>
-        <span class="small-label">7 HARI · PRAKIRAAN TERKALIBRASI</span>
-      </div>
-      <div class="daily-scroll">
-        <table class="daily-table">
-          <thead>
-            <tr>
-              <th scope="col">Hari</th>
-              <th scope="col">US AQI</th>
-              <th scope="col">Kondisi udara</th>
-              <th scope="col">Suhu</th>
-              <th scope="col">Angin</th>
-              <th scope="col">Kelembapan</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="(label, index) in dailyDays" :key="label">
-              <th scope="row">{{ label }}</th>
-              <td>
-                <strong
-                  :class="['forecast-aqi', getForecastAqiClass(Math.max(35, aqi + dailyOffsets[index]))]"
-                  :style="getForecastAqiStyle(Math.max(35, aqi + dailyOffsets[index]))"
-                  :title="`${Math.max(35, aqi + dailyOffsets[index])} AQI · ${category(Math.max(35, aqi + dailyOffsets[index]))}`"
-                >
-                  {{ Math.max(35, aqi + dailyOffsets[index]) }}
-                </strong>
-              </td>
-              <td>{{ category(Math.max(35, aqi + dailyOffsets[index])) }}</td>
-              <td>
-                <span class="weather-inline">
-                  <WeatherIcon />
-                  {{ (realtimeData?.temperature ? Math.round(realtimeData.temperature + 2 - (index % 2)) : 32 - (index % 2)) }}° <small>/ {{ (realtimeData?.temperature ? Math.round(realtimeData.temperature - 5 + (index % 3)) : 25 + (index % 3)) }}°</small>
-                </span>
-              </td>
-              <td>{{ (realtimeData?.windSpeedKmh ? Math.round(realtimeData.windSpeedKmh + index) : 14 + index) }} km/h</td>
-              <td>{{ (realtimeData?.humidity ? Math.round(realtimeData.humidity - index) : 70 - index) }}%</td>
-            </tr>
-          </tbody>
-        </table>
       </div>
     </section>
   </div>

@@ -77,19 +77,6 @@ export async function tambahUlasanEdukasi(req, res) {
   } catch (err) {
     return res.status(500).json({ message: 'Gagal menyimpan ulasan ke Supabase.', error: err.message });
   }
-<<<<<<< Updated upstream
-
-  const newRev = {
-    id: `rev-${Date.now()}`,
-    userName: req.user?.nama_lengkap || 'Pengguna',
-    rating: Number(rating),
-    comment: isi_ulasan.trim(),
-    createdAt: new Date().toISOString(),
-  };
-  dbStore.addArticleReview(id_konten, newRev);
-  return res.status(201).json({ ulasan_baru: newRev });
-=======
->>>>>>> Stashed changes
 }
 
 // UC-07: Edit Konten (Ulasan Edukasi)

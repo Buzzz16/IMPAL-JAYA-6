@@ -15,9 +15,24 @@ export async function getDaftarEdukasi(_req, res) {
        WHERE status_publikasi = 'PUBLISHED'
        ORDER BY published_at DESC`
     );
-    const count = result?.rows?.length || 0;
+    const rows = (result?.rows || []).map((row, idx) => ({
+      ...row,
+      id: row.id_konten || row.id || `edu-${idx}`,
+      title: row.judul_konten || row.title || 'Materi Edukasi Udara',
+      topic: row.kategori_topik || row.topic || 'Kenali udara',
+      summary: row.isi_materi
+        ? (row.isi_materi.length > 150 ? row.isi_materi.slice(0, 150) + '...' : row.isi_materi)
+        : (row.summary || ''),
+      sections: Array.isArray(row.sections) && row.sections.length > 0
+        ? row.sections
+        : (row.isi_materi ? row.isi_materi.split('\n\n') : [row.summary || row.isi_materi || '']),
+      cover: row.media_url || row.cover || '',
+      minutes: row.minutes || 4,
+      audience: row.audience || 'Semua orang',
+    }));
+    const count = rows.length;
     res.locals.dbLog = `Ditemukan ${count} materi edukasi`;
-    return res.status(200).json({ list_konten: result?.rows || [] });
+    return res.status(200).json({ list_konten: rows });
   } catch (err) {
     return res.status(500).json({ message: 'Gagal memuat daftar edukasi dari Supabase.', error: err.message });
   }

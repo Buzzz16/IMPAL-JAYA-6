@@ -3,7 +3,7 @@
  * ============================================================================
  * SEKSI RINGKASAN EDUKASI BERANDA & MODAL ARTIKEL CEPAT
  * File: src/features/education/HomeEducationSection.vue
- * Terhubung dinamis dengan Backend
+ * Terhubung dinamis dengan Backend & Dukungan Normalisasi Data
  * ============================================================================
  */
 import { computed } from 'vue';
@@ -23,11 +23,11 @@ const displayArticles = computed(() => {
   if (props.lessons && props.lessons.length > 0) {
     return props.lessons.slice(0, 3).map((l, idx) => ({
       type: idx === 0 ? 'aqi' : idx === 1 ? 'mask' : 'photo',
-      category: l.topic || 'Kenali Udara',
-      title: l.title,
-      time: `${l.minutes || 3} mnt baca`,
-      cover: l.cover,
-      summary: l.summary,
+      category: l.topic || l.kategori_topik || 'Kenali Udara',
+      title: l.title || l.judul_konten || 'Materi Edukasi Udara',
+      time: `${l.minutes || 4} mnt baca`,
+      cover: l.cover || l.media_url,
+      summary: l.summary || l.isi_materi,
     }));
   }
   return HOME_ARTICLES;
@@ -49,7 +49,7 @@ const displayArticles = computed(() => {
       <button
         v-for="(a, i) in displayArticles"
         :key="a.title"
-        class="article-card"
+        class="article-card text-left transition hover:-translate-y-1 hover:shadow-md cursor-pointer"
         @click="$emit('select-article', i)"
       >
         <div :class="`article-art ${a.type}`">

@@ -442,7 +442,33 @@ async function fetchGlobalData() {
     ]);
 
     if (eduRes.status === 'fulfilled' && eduRes.value?.list_konten?.length > 0) {
-      lessons.value = eduRes.value.list_konten;
+      lessons.value = eduRes.value.list_konten.map((item, idx) => {
+        const fallback = initialLessons[idx] || initialLessons[0] || {};
+        const title = item.judul_konten || item.title || fallback.title || 'Materi Edukasi Udara';
+        const topic = item.kategori_topik || item.topic || fallback.topic || 'Kenali udara';
+        const summary = item.isi_materi
+          ? (item.isi_materi.length > 150 ? item.isi_materi.slice(0, 150) + '...' : item.isi_materi)
+          : (item.summary || fallback.summary || '');
+        const sections = Array.isArray(item.sections) && item.sections.length > 0
+          ? item.sections
+          : (item.isi_materi ? item.isi_materi.split('\n\n') : (fallback.sections || [summary]));
+        const cover = item.media_url || item.cover || fallback.cover || '';
+        const minutes = item.minutes || fallback.minutes || 4;
+        const audience = item.audience || fallback.audience || 'Semua orang';
+
+        return {
+          ...fallback,
+          ...item,
+          id: item.id_konten || item.id || `edu-${idx}`,
+          title,
+          topic,
+          summary,
+          sections,
+          cover,
+          minutes,
+          audience,
+        };
+      });
     }
 
     if (feedRes.status === 'fulfilled') {
@@ -944,6 +970,11 @@ onBeforeUnmount(() => {
       :lessons="lessons"
       @close="article = null"
       @next="article = $event"
+      @open-education="
+        article = null;
+        page = 'education';
+        window.scrollTo(0, 0);
+      "
     />
 
     <ReportDialog

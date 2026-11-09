@@ -16,7 +16,7 @@ import HistorySummaryCard from './features/history/HistorySummaryCard.vue';
 import HistoryDetail from './features/history/HistoryDetail.vue';
 import HomeMapCard from './features/map/HomeMapCard.vue';
 import MapDetail from './features/map/MapDetail.vue';
-import { CITY_COORDINATES, AVAILABLE_CITIES, findNearestSupportedCity } from './features/map/stationsData';
+import { CITY_COORDINATES, AVAILABLE_CITIES, findNearestSupportedCity, findNearestStation } from './features/map/stationsData';
 import HomeHealthCard from './features/health/HomeHealthCard.vue';
 import HealthRecommendations from './features/health/HealthRecommendations.vue';
 import HomeEducationSection from './features/education/HomeEducationSection.vue';
@@ -248,8 +248,35 @@ const userDeviceLocation = ref(null); // { lat, lon, accuracy }
 const isLiveTracking = ref(true); // Default true: Lokasi default adalah posisi map device dijalankan
 let geolocationWatchId = null;
 
-const aqi = computed(() => realtimeData.value?.aqi ?? null);
-const pm25 = computed(() => realtimeData.value?.pm25 ?? 23.0);
+// Stasiun terdekat aktif (sinkron antara lokasi GPS, kartu peta, dan kartu AQI utama)
+const activeNearestStation = computed(() => {
+  if (!liveStations.value || liveStations.value.length === 0) return null;
+  // 1. Jika point sudah dipilih atau dicocokkan (misal: 'Bandung Selatan')
+  if (point.value) {
+    const found = liveStations.value.find((s) => s.name === point.value);
+    if (found) return found;
+  }
+  // 2. Jika GPS user aktif, cari stasiun terdekat geografis
+  if (userDeviceLocation.value?.lat != null && userDeviceLocation.value?.lon != null) {
+    const nearest = findNearestStation(userDeviceLocation.value.lat, userDeviceLocation.value.lon, liveStations.value);
+    if (nearest) return nearest;
+  }
+  return liveStations.value[0];
+});
+
+const aqi = computed(() => {
+  if (activeNearestStation.value && activeNearestStation.value.aqi != null) {
+    return activeNearestStation.value.aqi;
+  }
+  return realtimeData.value?.aqi ?? null;
+});
+
+const pm25 = computed(() => {
+  if (activeNearestStation.value && activeNearestStation.value.pm25 != null) {
+    return activeNearestStation.value.pm25;
+  }
+  return realtimeData.value?.pm25 ?? 23.0;
+});
 const updatedAt = computed(() => realtimeData.value?.updatedAt ?? '11.00 WITA');
 const cityProvince = computed(
   () => realtimeData.value?.province || CITY_COORDINATES[city.value]?.province || 'Indonesia'
@@ -294,7 +321,16 @@ async function fetchCityData(cityName = city.value, lat = null, lon = null) {
     if (stationsRes.status === 'fulfilled' && stationsRes.value) {
       liveStations.value = stationsRes.value;
       if (liveStations.value.length > 0) {
-        point.value = liveStations.value[0].name;
+        if (targetLat != null && targetLon != null) {
+          const nearestSt = findNearestStation(targetLat, targetLon, liveStations.value);
+          if (nearestSt) {
+            point.value = nearestSt.name;
+          } else {
+            point.value = liveStations.value[0].name;
+          }
+        } else if (!point.value || !point.value.includes(cityName)) {
+          point.value = liveStations.value[0].name;
+        }
       }
     }
 
@@ -343,7 +379,12 @@ async function initLiveLocationTracking() {
         const nearest = findNearestSupportedCity(lat, lon);
         if (nearest) {
           city.value = nearest;
-          point.value = nearest + ' Kota';
+          const nearestSt = findNearestStation(lat, lon, CITY_COORDINATES[nearest]?.stations);
+          if (nearestSt) {
+            point.value = nearestSt.name;
+          } else {
+            point.value = nearest + ' Kota';
+          }
           try { localStorage.setItem('polusee_selected_city', nearest); } catch {}
 
           // Otomatis update lokasi default user ke Supabase
@@ -397,6 +438,10 @@ function startWatchingLocation() {
         const nearest = findNearestSupportedCity(lat, lon);
         if (nearest && nearest !== city.value) {
           city.value = nearest;
+        }
+        const nearestSt = findNearestStation(lat, lon, liveStations.value.length > 0 ? liveStations.value : CITY_COORDINATES[city.value]?.stations);
+        if (nearestSt && point.value !== nearestSt.name) {
+          point.value = nearestSt.name;
         }
       }
     },
@@ -826,6 +871,7 @@ onBeforeUnmount(() => {
           :is-live-tracking="isLiveTracking"
           :history-data="historyData"
           :realtime-data="realtimeData"
+          :loading="loadingData || aqi == null || !liveStations?.length"
           @back="goHome"
           @detail="page = 'air-detail'"
         />
@@ -902,9 +948,10 @@ onBeforeUnmount(() => {
             <div class="overview-grid">
               <AqiRealtimeCard
                 :city="city"
+                :station-name="activeNearestStation?.name || point || city"
                 :aqi="aqi"
                 :pm25="pm25"
-                :pm10="realtimeData?.pm10"
+                :pm10="activeNearestStation?.pm10 ?? realtimeData?.pm10"
                 :updated-at="updatedAt"
                 :weather="realtimeData?.weather"
                 :realtime-data="realtimeData"
@@ -929,6 +976,7 @@ onBeforeUnmount(() => {
                 :live-stations="liveStations"
                 :user-location="userDeviceLocation"
                 :is-live-tracking="isLiveTracking"
+                :loading="loadingData || aqi == null || !liveStations?.length"
                 @update:point="point = $event"
                 @update:zoom="zoom = $event"
                 @open-map-detail="page = 'map-detail'"

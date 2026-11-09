@@ -89,14 +89,14 @@ export async function ensureTablesExist() {
       );
       CREATE INDEX IF NOT EXISTS idx_riwayat_aqi_lokasi_waktu ON riwayat_aqi_log (lokasi, waktu_catat);
 
-      -- Bersihkan log duplikat yang tercatat pada detik bersamaan
+      -- Bersihkan log duplikat yang tercatat pada rentang waktu berdekatan (< 4 jam)
       DELETE FROM riwayat_aqi_log a USING riwayat_aqi_log b
       WHERE a.id_log > b.id_log
-        AND a.lokasi = b.lokasi
-        AND ABS(EXTRACT(EPOCH FROM (a.waktu_catat - b.waktu_catat))) < 120;
+        AND LOWER(a.lokasi) = LOWER(b.lokasi)
+        AND ABS(EXTRACT(EPOCH FROM (a.waktu_catat - b.waktu_catat))) < 14400;
 
       -- Normalisasi nama lokasi Surabaya dari stasiun Pacarkeling
-      UPDATE riwayat_aqi_log SET lokasi = 'Surabaya' WHERE lokasi = 'Pacarkeling';
+      UPDATE riwayat_aqi_log SET lokasi = 'Surabaya' WHERE LOWER(lokasi) = 'pacarkeling';
     `);
   } catch (err) {
     console.warn('[Database Schema Warning]:', err.message);

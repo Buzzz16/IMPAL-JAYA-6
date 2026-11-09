@@ -439,6 +439,32 @@ export function findNearestSupportedCity(lat, lon) {
 }
 
 /**
+ * Mencari stasiun titik pantau terdekat secara geografis dari koordinat GPS (lat, lon)
+ */
+export function findNearestStation(lat, lon, stationList = null) {
+  if (lat == null || lon == null) return null;
+  const list = Array.isArray(stationList) && stationList.length > 0
+    ? stationList
+    : getAllIndonesiaStations();
+
+  let bestStation = null;
+  let minDistance = Infinity;
+
+  for (const st of list) {
+    if (st.lat == null || st.lon == null) continue;
+    const dLat = Number(lat) - Number(st.lat);
+    const dLon = Number(lon) - Number(st.lon);
+    const dist = dLat * dLat + dLon * dLon;
+    if (dist < minDistance) {
+      minDistance = dist;
+      bestStation = st;
+    }
+  }
+
+  return bestStation;
+}
+
+/**
  * Mengambil SELURUH titik koordinat stasiun pemantau yang ada di Indonesia.
  * Titik stasiun kota terpilih diletakkan di prioritas teratas dengan data live,
  * diikuti seluruh kota lain di Sumatera, Jawa, Kalimantan, Bali, Nusa Tenggara, dan Sulawesi.
@@ -476,7 +502,7 @@ export function getAllIndonesiaStations(selectedCity = 'Samarinda', selectedCity
       });
     } else {
       // Baseline AQI regional terkalibrasi per kota di Indonesia
-      const cityBaseAqi = isCurrent
+      const cityBaseAqi = (isCurrent && selectedCityAqi != null)
         ? selectedCityAqi
         : (cityName === 'Jakarta' ? 162
           : cityName === 'Bandung' ? 64

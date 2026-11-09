@@ -442,19 +442,26 @@ async function fetchGlobalData() {
     ]);
 
     if (eduRes.status === 'fulfilled' && eduRes.value?.list_konten?.length > 0) {
+      const cleanStr = (s) => (s ? String(s).replace(/\\r\\n/g, '\n').replace(/\\n/g, '\n').replace(/\r\n/g, '\n') : '');
       lessons.value = eduRes.value.list_konten.map((item, idx) => {
         const fallback = initialLessons[idx] || initialLessons[0] || {};
-        const title = item.judul_konten || item.title || fallback.title || 'Materi Edukasi Udara';
-        const topic = item.kategori_topik || item.topic || fallback.topic || 'Kenali udara';
-        const summary = item.isi_materi
-          ? (item.isi_materi.length > 150 ? item.isi_materi.slice(0, 150) + '...' : item.isi_materi)
-          : (item.summary || fallback.summary || '');
-        const sections = Array.isArray(item.sections) && item.sections.length > 0
-          ? item.sections
-          : (item.isi_materi ? item.isi_materi.split('\n\n') : (fallback.sections || [summary]));
+        const title = cleanStr(item.judul_konten || item.title || fallback.title || 'Materi Edukasi Udara');
+        const topic = cleanStr(item.kategori_topik || item.topic || fallback.topic || 'Kenali udara');
+        const rawMateri = cleanStr(item.isi_materi || '');
+        const summary = cleanStr(item.summary) || (rawMateri ? rawMateri.split('\n')[0].trim() : cleanStr(fallback.summary));
+        
+        let sections = [];
+        if (Array.isArray(item.sections) && item.sections.length > 0) {
+          sections = item.sections.map(s => cleanStr(s)).filter(Boolean);
+        } else if (rawMateri) {
+          sections = rawMateri.split(/\n+/).map(p => p.trim()).filter(Boolean);
+        } else {
+          sections = fallback.sections ? fallback.sections.map(s => cleanStr(s)) : [summary];
+        }
+
         const cover = item.media_url || item.cover || fallback.cover || '';
         const minutes = item.minutes || fallback.minutes || 4;
-        const audience = item.audience || fallback.audience || 'Semua orang';
+        const audience = cleanStr(item.audience || fallback.audience || 'Semua orang');
 
         return {
           ...fallback,

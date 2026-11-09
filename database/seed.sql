@@ -42,9 +42,19 @@ VALUES
 -- 4. Seed Konten Edukasi
 INSERT INTO konten_edukasi (judul_konten, kategori_topik, isi_materi, media_url, status_publikasi, id_admin)
 VALUES
-  ('AQI: membaca angka, memahami risiko.', 'Kenali udara', 'AQI menggambarkan tingkat pencemaran udara. Nilai yang lebih tinggi menunjukkan risiko kesehatan yang lebih besar.\n\n0–50: baik. 51–100: sedang. 101–150: tidak sehat bagi kelompok sensitif. 151–200: tidak sehat. 201–300: sangat tidak sehat. Di atas 300: berbahaya.\n\nPantau informasi dari stasiun pemantau resmi terdekat. Kondisi dapat berubah sepanjang hari; sesuaikan aktivitas dengan angka terbaru.', '', 'PUBLISHED', '22222222-2222-2222-2222-222222222222'),
-  ('PM2.5: kecil partikelnya, besar dampaknya.', 'Bahaya polusi', 'PM2.5 adalah partikel berdiameter 2,5 mikrometer atau lebih kecil. Sumbernya antara lain pembakaran bahan bakar, kebakaran, dan proses industri.\n\nPartikel halus dapat masuk jauh ke paru-paru. Paparan polusi dikaitkan dengan gangguan pernapasan dan penyakit kardiovaskular.\n\nKurangi paparan saat udara buruk: batasi aktivitas berat di luar, hindari sumber asap, dan gunakan ruang dengan udara lebih bersih.', '', 'PUBLISHED', '22222222-2222-2222-2222-222222222222'),
-  ('Memilih masker yang benar-benar melindungi.', 'Perlindungan diri', 'Respirator N95 yang sesuai dan terpasang rapat dapat membantu mengurangi partikel yang terhirup. Masker kain tidak memberi perlindungan setara terhadap partikel halus.\n\nTutup hidung dan mulut, sesuaikan penjepit hidung, dan periksa celah di tepi masker. Ganti jika rusak, kotor, atau sulit digunakan untuk bernapas.', '', 'PUBLISHED', '22222222-2222-2222-2222-222222222222');
+  ('AQI: membaca angka, memahami risiko.', 'Kenali udara', 'AQI menggambarkan tingkat pencemaran udara. Nilai yang lebih tinggi menunjukkan risiko kesehatan yang lebih besar.
+
+0–50: baik. 51–100: sedang. 101–150: tidak sehat bagi kelompok sensitif. 151–200: tidak sehat. 201–300: sangat tidak sehat. Di atas 300: berbahaya.
+
+Pantau informasi dari stasiun pemantau resmi terdekat. Kondisi dapat berubah sepanjang hari; sesuaikan aktivitas dengan angka terbaru.', '', 'PUBLISHED', '22222222-2222-2222-2222-222222222222'),
+  ('PM2.5: kecil partikelnya, besar dampaknya.', 'Bahaya polusi', 'PM2.5 adalah partikel berdiameter 2,5 mikrometer atau lebih kecil. Sumbernya antara lain pembakaran bahan bakar, kebakaran, dan proses industri.
+
+Partikel halus dapat masuk jauh ke paru-paru. Paparan polusi dikaitkan dengan gangguan pernapasan dan penyakit kardiovaskular.
+
+Kurangi paparan saat udara buruk: batasi aktivitas berat di luar, hindari sumber asap, dan gunakan ruang dengan udara lebih bersih.', '', 'PUBLISHED', '22222222-2222-2222-2222-222222222222'),
+  ('Memilih masker yang benar-benar melindungi.', 'Perlindungan diri', 'Respirator N95 yang sesuai dan terpasang rapat dapat membantu mengurangi partikel yang terhirup. Masker kain tidak memberi perlindungan setara terhadap partikel halus.
+
+Tutup hidung dan mulut, sesuaikan penjepit hidung, dan periksa celah di tepi masker. Ganti jika rusak, kotor, atau sulit digunakan untuk bernapas.', '', 'PUBLISHED', '22222222-2222-2222-2222-222222222222');
 
 -- 5. Seed Ulasan Edukasi
 INSERT INTO ulasan_edukasi (id_konten, id_user, isi_ulasan, rating, is_edited)

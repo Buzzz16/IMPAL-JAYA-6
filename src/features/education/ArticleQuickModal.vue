@@ -23,6 +23,14 @@ const props = defineProps({
 
 const emit = defineEmits(['close', 'next', 'prev', 'open-education']);
 
+function cleanText(str) {
+  if (!str) return '';
+  return String(str)
+    .replace(/\\r\\n/g, '\n')
+    .replace(/\\n/g, '\n')
+    .replace(/\r\n/g, '\n');
+}
+
 const totalArticles = computed(() => {
   if (props.lessons && props.lessons.length > 0) {
     return props.lessons.length;
@@ -35,17 +43,29 @@ const activeArticle = computed(() => {
 
   if (props.lessons && props.lessons[props.articleIndex]) {
     const l = props.lessons[props.articleIndex];
-    const category = (l.topic || l.kategori_topik || 'Kenali Udara').toUpperCase();
-    const title = l.title || l.judul_konten || 'Materi Edukasi Udara';
-    const description = l.summary || (l.isi_materi ? l.isi_materi.slice(0, 160) + '...' : '');
+    const category = cleanText(l.topic || l.kategori_topik || 'Kenali Udara').toUpperCase();
+    const title = cleanText(l.title || l.judul_konten || 'Materi Edukasi Udara');
 
-    let bodyText = '';
+    const rawMateri = cleanText(l.isi_materi || l.summary || '');
+    let paragraphs = [];
     if (Array.isArray(l.sections) && l.sections.length > 0) {
-      bodyText = l.sections.join('\n\n');
-    } else if (l.isi_materi) {
-      bodyText = l.isi_materi;
-    } else {
-      bodyText = l.summary || '';
+      paragraphs = l.sections.map(s => cleanText(s)).filter(Boolean);
+    } else if (rawMateri) {
+      paragraphs = rawMateri.split(/\n+/).map(p => p.trim()).filter(Boolean);
+    }
+
+    // Lead paragraph / intisari: ambil dari summary atau paragraf pertama jika berbeda dengan judul
+    let description = cleanText(l.summary);
+    if (!description && paragraphs.length > 0) {
+      description = paragraphs[0];
+    } else if (description.includes('\n')) {
+      description = description.split('\n')[0].trim();
+    }
+
+    // Jika paragraf pertama persis sama dengan lead description, hindari pengulangan ganda
+    let displayParagraphs = paragraphs;
+    if (paragraphs.length > 1 && paragraphs[0] === description) {
+      displayParagraphs = paragraphs.slice(1);
     }
 
     const type = props.articleIndex === 0 ? 'aqi' : props.articleIndex === 1 ? 'mask' : 'photo';
@@ -56,7 +76,7 @@ const activeArticle = computed(() => {
       category,
       title,
       description,
-      body: bodyText,
+      paragraphs: displayParagraphs,
       type,
       cover,
       time,
@@ -64,11 +84,14 @@ const activeArticle = computed(() => {
   }
 
   const fallback = HOME_ARTICLES[props.articleIndex] || HOME_ARTICLES[0];
+  const fallbackBody = cleanText(fallback.body);
+  const fallbackParas = fallbackBody ? fallbackBody.split(/\n+/).map(p => p.trim()).filter(Boolean) : [];
+
   return {
-    category: (fallback.category || 'KENALI UDARAMU').toUpperCase(),
-    title: fallback.title,
-    description: fallback.description,
-    body: fallback.body,
+    category: cleanText(fallback.category || 'KENALI UDARAMU').toUpperCase(),
+    title: cleanText(fallback.title),
+    description: cleanText(fallback.description),
+    paragraphs: fallbackParas,
     type: fallback.type || 'aqi',
     cover: 'https://images.unsplash.com/photo-1476231682828-37e571bc172f?auto=format&fit=crop&w=1200&q=80',
     time: fallback.time || '4 mnt baca',
@@ -172,10 +195,10 @@ function handleNext() {
           {{ activeArticle.description }}
         </div>
 
-        <!-- Isi Pembahasan Artikel -->
+        <!-- Isi Pembahasan Artikel (Paragraf Rapi) -->
         <div class="prose text-[#33443d] text-sm sm:text-[15px] leading-relaxed space-y-4 font-normal">
           <p
-            v-for="(para, pIdx) in activeArticle.body.split('\n\n').filter(p => p.trim())"
+            v-for="(para, pIdx) in activeArticle.paragraphs"
             :key="pIdx"
             class="leading-relaxed"
           >

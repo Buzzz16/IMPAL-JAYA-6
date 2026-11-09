@@ -139,13 +139,26 @@ export async function updateProfileData(payload) {
 }
 
 export async function forgotPasswordAccount({ email, newPassword, confirmPassword }) {
+  const cleanEmail = (email || '').trim().toLowerCase();
+  const cleanPassword = (newPassword || '').trim();
+
+  // Validasi demo / offline fallback
+  if (
+    (cleanEmail === 'admin@polusee.id' && cleanPassword === 'admin123') ||
+    (cleanEmail === 'user@polusee.id' && cleanPassword === 'user123')
+  ) {
+    const error = new Error('Kata sandi baru tidak boleh sama dengan kata sandi sebelumnya.');
+    error.status = 400;
+    throw error;
+  }
+
   try {
     const res = await apiRequest('/auth/forgot-password', {
       method: 'POST',
       body: JSON.stringify({
-        email,
-        password: newPassword,
-        newPassword,
+        email: cleanEmail,
+        password: cleanPassword,
+        newPassword: cleanPassword,
         confirmPassword,
       }),
     });

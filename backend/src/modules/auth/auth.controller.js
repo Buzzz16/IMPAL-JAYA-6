@@ -195,15 +195,26 @@ export async function forgotPassword(req, res) {
     const cleanEmail = String(email).trim().toLowerCase();
 
     const result = await query(
-      `SELECT a.id_akun, a.email FROM akun a WHERE LOWER(TRIM(a.email)) = $1`,
+      `SELECT a.id_akun, a.email, a.password_hash FROM akun a WHERE LOWER(TRIM(a.email)) = $1`,
       [cleanEmail]
     );
 
     if (!result || result.rows.length === 0) {
-      return res.status(404).json({ message: 'Akun dengan email tersebut tidak ditemukan di Supabase.' });
+      return res.status(404).json({ message: 'Akun dengan email tersebut tidak ditemukan di database.' });
     }
 
     const account = result.rows[0];
+
+    // Validasi: kata sandi baru tidak boleh sama dengan kata sandi sebelumnya
+    if (account.password_hash) {
+      const isSamePassword = await bcrypt.compare(targetPassword, account.password_hash);
+      if (isSamePassword) {
+        return res.status(400).json({
+          message: 'Kata sandi baru tidak boleh sama dengan kata sandi sebelumnya.',
+        });
+      }
+    }
+
     const passwordHash = await bcrypt.hash(targetPassword, 10);
 
     await query(

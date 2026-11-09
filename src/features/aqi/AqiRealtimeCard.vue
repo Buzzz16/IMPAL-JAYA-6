@@ -45,6 +45,10 @@ const props = defineProps({
     type: String,
     default: 'IQAIR_LIVE_API',
   },
+  stationName: {
+    type: String,
+    default: '',
+  },
 });
 
 const emit = defineEmits(['open-detail']);
@@ -83,8 +87,11 @@ function handleKeydown(event) {
     @click="emit('open-detail')"
     @keydown="handleKeydown"
   >
-    <div class="panel-top">
+    <div class="panel-top" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 6px;">
       <span class="eyebrow" :style="{ color: theme.descColor }">KUALITAS UDARA SAAT INI</span>
+      <span v-if="stationName" class="text-xs font-semibold opacity-85" :style="{ color: theme.descColor }">
+        📍 {{ stationName }}
+      </span>
     </div>
     <div class="aqi-main">
       <div>

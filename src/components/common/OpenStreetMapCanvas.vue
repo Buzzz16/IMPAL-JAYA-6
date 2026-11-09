@@ -43,6 +43,10 @@ const props = defineProps({
     type: Boolean,
     default: false,
   },
+  loading: {
+    type: Boolean,
+    default: false,
+  },
 });
 
 const emit = defineEmits(['select-station']);
@@ -127,6 +131,9 @@ function renderStationMarkers() {
   } else {
     markersLayer = L.layerGroup().addTo(mapInstance);
   }
+
+  // Jangan render marker dummy saat data sedang dalam proses loading
+  if (props.loading) return;
 
   const list = props.stations && props.stations.length > 0
     ? props.stations
@@ -343,6 +350,19 @@ watch(
   }
 );
 
+watch(
+  () => props.loading,
+  (isLoading) => {
+    if (!isLoading) {
+      renderStationMarkers();
+      renderHeatLayer();
+    } else {
+      if (markersLayer) markersLayer.clearLayers();
+      if (heatLayer) heatLayer.clearLayers();
+    }
+  }
+);
+
 onMounted(() => {
   initOpenStreetMap();
 });
@@ -365,10 +385,63 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div ref="mapContainer" class="osm-map-layer" aria-label="Peta OpenStreetMap Interaktif" />
+  <div style="position: relative; width: 100%; height: 100%;">
+    <div ref="mapContainer" class="osm-map-layer" aria-label="Peta OpenStreetMap Interaktif" />
+    <div v-if="loading" class="osm-map-loading-overlay">
+      <div class="osm-loading-chip">
+        <span class="osm-loading-dot"></span>
+        <span>Menghubungkan ke stasiun pemantau udara real-time...</span>
+      </div>
+    </div>
+  </div>
 </template>
 
 <style>
+.osm-map-loading-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(248, 248, 241, 0.6);
+  backdrop-filter: blur(2px);
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.osm-loading-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: #ffffff;
+  border: 1px solid #ced2c8;
+  padding: 8px 16px;
+  border-radius: 9999px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+  font-family: 'DM Sans', sans-serif;
+  font-size: 13px;
+  font-weight: 600;
+  color: #263b3e;
+}
+
+.osm-loading-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #10b981;
+  animation: osm-dot-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes osm-dot-pulse {
+  0%, 100% {
+    transform: scale(0.9);
+    opacity: 0.6;
+  }
+  50% {
+    transform: scale(1.3);
+    opacity: 1;
+  }
+}
 /* Leaflet custom marker styling */
 .osm-custom-div-icon {
   background: transparent !important;

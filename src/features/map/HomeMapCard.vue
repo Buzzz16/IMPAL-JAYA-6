@@ -17,7 +17,7 @@ const props = defineProps({
   },
   aqi: {
     type: Number,
-    required: true,
+    default: null,
   },
   point: {
     type: String,
@@ -39,11 +39,20 @@ const props = defineProps({
     type: Boolean,
     default: false,
   },
+  loading: {
+    type: Boolean,
+    default: false,
+  },
 });
 
 const emit = defineEmits(['update:point', 'update:zoom', 'open-map-detail']);
 
+const isLoading = computed(() => {
+  return props.loading || props.aqi == null || !props.liveStations || props.liveStations.length === 0;
+});
+
 const stations = computed(() => {
+  if (isLoading.value) return [];
   if (props.liveStations && props.liveStations.length > 0) {
     return props.liveStations;
   }
@@ -74,7 +83,7 @@ function selectStation(name) {
           <span class="live-gps-ping"></span>
           Live GPS Aktif
         </span>
-        <span class="small-label"><AppIcon name="pin" :size="14" /> {{ stations.length }} titik pantau</span>
+        <span class="small-label"><AppIcon name="pin" :size="14" /> {{ isLoading ? '--' : stations.length }} titik pantau</span>
       </div>
     </div>
     <div class="map-canvas">
@@ -87,10 +96,19 @@ function selectStation(name) {
         :selected-station="point"
         :user-location="userLocation"
         :is-live-tracking="isLiveTracking"
+        :loading="isLoading"
         @select-station="selectStation"
       />
 
-      <div class="map-tooltip">
+      <!-- Loading overlay saat data sedang dimuat -->
+      <div v-if="isLoading" class="home-map-loading-overlay">
+        <div class="osm-loading-chip">
+          <span class="osm-loading-dot"></span>
+          <span>Menghubungkan ke stasiun pemantau udara real-time...</span>
+        </div>
+      </div>
+
+      <div v-if="!isLoading" class="map-tooltip">
         <i />
         <div class="tooltip-text">
           <strong>{{ point }}</strong>
@@ -113,7 +131,7 @@ function selectStation(name) {
         </button>
       </div>
 
-      <div class="map-bottom-bar">
+      <div v-if="!isLoading" class="map-bottom-bar">
         <div class="map-key">
           <span><i class="green" />Baik</span>
           <span><i class="yellow" />Sedang</span>
@@ -220,6 +238,18 @@ function selectStation(name) {
   padding: 3px 6px;
   border-radius: 3px;
   white-space: nowrap;
+}
+
+.home-map-loading-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(248, 248, 241, 0.7);
+  backdrop-filter: blur(2px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  pointer-events: none;
 }
 
 @keyframes live-ping-anim {

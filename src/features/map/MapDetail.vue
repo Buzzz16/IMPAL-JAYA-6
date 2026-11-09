@@ -23,7 +23,11 @@ const props = defineProps({
   },
   aqi: {
     type: Number,
-    required: true,
+    default: null,
+  },
+  loading: {
+    type: Boolean,
+    default: false,
   },
   initialPoint: {
     type: String,
@@ -94,16 +98,64 @@ const groupedStationsByCity = computed(() => {
 
 const selected = ref(0);
 
-function initSelectedStation() {
-  const targetName = props.initialPoint;
-  const idx = stations.value.findIndex(
-    (s) => s.name === targetName || (s.cityName === props.city && s.isPrimary)
-  );
-  if (idx !== -1) {
-    selected.value = idx;
-  } else {
-    selected.value = 0;
+function findNearestStationIndex(lat, lon) {
+  if (lat == null || lon == null || !stations.value || stations.value.length === 0) return -1;
+
+  // Cari stasiun terdekat di dalam kota terpilih (props.city) terlebih dahulu
+  const cityStations = stations.value
+    .map((s, idx) => ({ s, idx }))
+    .filter(({ s }) => s.cityName === props.city);
+
+  const pool = cityStations.length > 0 ? cityStations : stations.value.map((s, idx) => ({ s, idx }));
+
+  let bestIdx = -1;
+  let minDistance = Infinity;
+  for (const { s, idx } of pool) {
+    if (s.lat == null || s.lon == null) continue;
+    const dLat = Number(lat) - Number(s.lat);
+    const dLon = Number(lon) - Number(s.lon);
+    const dist = dLat * dLat + dLon * dLon;
+    if (dist < minDistance) {
+      minDistance = dist;
+      bestIdx = idx;
+    }
   }
+  return bestIdx;
+}
+
+function initSelectedStation() {
+  // 1. Jika koordinat GPS terdeteksi (props.userLocation), otomatis pilih stasiun TERDEKAT dari posisi GPS!
+  if (props.userLocation && props.userLocation.lat != null && props.userLocation.lon != null) {
+    const nearestIdx = findNearestStationIndex(props.userLocation.lat, props.userLocation.lon);
+    if (nearestIdx !== -1) {
+      selected.value = nearestIdx;
+      return;
+    }
+  }
+
+  // 2. Jika ada initialPoint yang spesifik
+  const targetName = props.initialPoint;
+  if (targetName) {
+    const q = cleanStation(targetName);
+    const idx = stations.value.findIndex(
+      (s) => s.name === targetName || cleanStation(s.name) === q
+    );
+    if (idx !== -1) {
+      selected.value = idx;
+      return;
+    }
+  }
+
+  // 3. Fallback ke stasiun utama kota terpilih
+  const primaryIdx = stations.value.findIndex(
+    (s) => s.cityName === props.city && s.isPrimary
+  );
+  if (primaryIdx !== -1) {
+    selected.value = primaryIdx;
+    return;
+  }
+
+  selected.value = 0;
 }
 
 function onMapSelectStation(name) {
@@ -148,6 +200,40 @@ watch(
   }
 );
 
+watch(
+  () => props.userLocation,
+  (newLoc) => {
+    if (newLoc && newLoc.lat != null && newLoc.lon != null) {
+      const nearestIdx = findNearestStationIndex(newLoc.lat, newLoc.lon);
+      if (nearestIdx !== -1) {
+        selected.value = nearestIdx;
+      }
+    }
+  },
+  { deep: true }
+);
+
+watch(
+  () => props.liveStations,
+  () => {
+    initSelectedStation();
+  },
+  { deep: true }
+);
+
+watch(
+  () => props.initialPoint,
+  (newPoint) => {
+    if (newPoint) {
+      const q = cleanStation(newPoint);
+      const idx = stations.value.findIndex(
+        (s) => s.name === newPoint || cleanStation(s.name) === q
+      );
+      if (idx !== -1) selected.value = idx;
+    }
+  }
+);
+
 onMounted(() => {
   initSelectedStation();
   heading.value?.focus();
@@ -162,8 +248,13 @@ const station = computed(() => stations.value[selected.value] || stations.value[
   lon: 117.1536,
 });
 
+const isLoading = computed(() => {
+  return props.loading || props.aqi == null || !props.liveStations || props.liveStations.length === 0;
+});
+
 // Level kategori 1-6 untuk slider bar pada legenda (Sesuai Image 4)
 const activeTierLevel = computed(() => {
+  if (isLoading.value) return 1;
   const v = Number(station.value?.value || station.value?.aqi || props.aqi || 0);
   if (v > 300) return 6;
   if (v > 200) return 5;
@@ -175,11 +266,26 @@ const activeTierLevel = computed(() => {
 
 // Dynamic Category & Theme based on AQI
 const status = computed(() => {
+  if (isLoading.value) return 'Memuat data...';
   const v = Number(station.value.value || station.value.aqi || props.aqi || 0);
   return getAqiCategory(v);
 });
 
 const currentTheme = computed(() => {
+  if (isLoading.value) {
+    return {
+      cardBg: '#e8efe6',
+      cardBorder: '#b5c7b2',
+      textColor: '#263b3e',
+      badgeBg: '#8ea889',
+      badgeBorder: '#7d9678',
+      badgeText: '#ffffff',
+      badgeDot: '#10b981',
+      divider: '#c5d3c2',
+      unitColor: '#587c55',
+      descColor: '#476645',
+    };
+  }
   const v = Number(station.value.value || station.value.aqi || props.aqi || 0);
   return getAqiTheme(v);
 });
@@ -199,6 +305,7 @@ const weatherData = computed(() => {
 
 // Validasi keberadaan data (sembunyikan/disable jika kosong dari API)
 const hasAqiData = computed(() => {
+  if (isLoading.value) return false;
   return stations.value.some((s) => typeof s.value === 'number' && s.value > 0);
 });
 
@@ -208,6 +315,7 @@ const hasAqiData = computed(() => {
 // Sumbu X: 24 jam lalu, 12 jam lalu, Sekarang
 // ============================================================================
 const chartSeries = computed(() => {
+  if (isLoading.value) return [];
   if (props.historyData?.series && props.historyData.series.length > 0) {
     const cityBaseAqi = props.historyData.currentAqi || props.aqi || 74;
     const stationAqi = station.value?.value || cityBaseAqi;
@@ -395,10 +503,11 @@ function handleChartMouseLeave() {
       <!-- SIDEBAR INFO TITIK PANTAU -->
       <section class="station-info">
         <span class="eyebrow">TITIK PANTAU UDARA</span>
-        <h1 ref="heading" tabindex="-1">{{ station.name }}</h1>
+        <h1 ref="heading" tabindex="-1">{{ isLoading ? 'Memuat data stasiun...' : station.name }}</h1>
         <p class="station-location">
           Indonesia · {{ station.cityName || city }}<br />
-          Koordinat {{ station.lat ? station.lat.toFixed(4) : '-0.5022' }}, {{ station.lon ? station.lon.toFixed(4) : '117.1536' }}
+          <span v-if="isLoading" class="text-xs opacity-75">Mendeteksi koordinat stasiun...</span>
+          <span v-else>Koordinat {{ station.lat ? station.lat.toFixed(4) : '-0.5022' }}, {{ station.lon ? station.lon.toFixed(4) : '117.1536' }}</span>
         </p>
 
         <!-- PENCARIAN & PEMILIHAN TITIK PANTAU SELURUH INDONESIA DENGAN CITYSEARCHSELECT -->
@@ -426,7 +535,7 @@ function handleChartMouseLeave() {
           <div style="display: flex; justify-content: space-between; align-items: flex-start;">
             <div>
               <strong :style="{ color: currentTheme.textColor }">
-                {{ station.value }}
+                {{ isLoading ? '--' : station.value }}
                 <small :style="{ color: currentTheme.unitColor || currentTheme.textColor }">US AQI</small>
               </strong>
             </div>
@@ -438,38 +547,42 @@ function handleChartMouseLeave() {
                 borderColor: currentTheme.badgeBorder,
               }"
             >
-              <i :style="{ backgroundColor: currentTheme.badgeDot || currentTheme.badgeText }" />
-              {{ status }}
+              <i :style="{ backgroundColor: currentTheme.badgeDot || currentTheme.badgeText }" :class="{ 'animate-pulse': isLoading }" />
+              {{ isLoading ? 'Memuat data...' : status }}
             </span>
           </div>
           <p :style="{ borderTopColor: currentTheme.divider, color: currentTheme.descColor || currentTheme.textColor, display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.5rem' }">
-            <span>Polutan: <b>PM2.5</b> {{ Math.max(5, (station.pm25 || station.value * 0.369)).toFixed(1) }} µg/m³</span>
-            <span><b>PM10</b> {{ Math.max(8, (station.pm10 || station.value * 0.495)).toFixed(1) }} µg/m³</span>
+            <span>Polutan: <b>PM2.5</b> {{ isLoading ? '--' : Math.max(5, (station.pm25 || station.value * 0.369)).toFixed(1) }} µg/m³</span>
+            <span><b>PM10</b> {{ isLoading ? '--' : Math.max(8, (station.pm10 || station.value * 0.495)).toFixed(1) }} µg/m³</span>
           </p>
         </div>
 
         <!-- CUACA & PARAMETER METEOROLOGI DINAMIS -->
         <dl class="station-weather">
           <div>
-            <dt>Suhu · {{ weatherData.weatherDescription }}</dt>
-            <dd>{{ weatherData.temperature }}°C</dd>
+            <dt>Suhu · {{ isLoading ? 'Memuat...' : weatherData.weatherDescription }}</dt>
+            <dd>{{ isLoading ? '--' : weatherData.temperature }}°C</dd>
           </div>
           <div>
             <dt>Kelembapan (RH)</dt>
-            <dd>{{ weatherData.humidity }}%</dd>
+            <dd>{{ isLoading ? '--' : weatherData.humidity }}%</dd>
           </div>
           <div>
-            <dt>Angin · {{ weatherData.windDirectionText || 'Variabel' }} {{ weatherData.windDirectionDeg != null ? `(${weatherData.windDirectionDeg}°)` : '' }}</dt>
-            <dd>{{ weatherData.wind }} km/h <small style="font-size: 11px; opacity: 0.85;">({{ (weatherData.wind / 3.6).toFixed(1) }} m/s)</small></dd>
+            <dt>Angin · {{ isLoading ? 'Memuat...' : (weatherData.windDirectionText || 'Variabel') + (weatherData.windDirectionDeg != null ? ' (' + weatherData.windDirectionDeg + '°)' : '') }}</dt>
+            <dd>{{ isLoading ? '--' : weatherData.wind }} km/h <small v-if="!isLoading" style="font-size: 11px; opacity: 0.85;">({{ (weatherData.wind / 3.6).toFixed(1) }} m/s)</small></dd>
           </div>
           <div>
             <dt>Tekanan Barometrik</dt>
-            <dd>{{ weatherData.pressure }} mbar</dd>
+            <dd>{{ isLoading ? '--' : weatherData.pressure }} mbar</dd>
           </div>
         </dl>
 
         <!-- KOMPONEN GRAFIK RIWAYAT AQI SESUAI GAMBAR 2 -->
-        <div class="station-history-card">
+        <div class="station-history-card" style="position: relative;">
+          <div v-if="isLoading" class="map-history-loading-overlay">
+            <span class="map-loading-dot"></span>
+            <span>Menghubungkan ke stasiun pemantau udara real-time...</span>
+          </div>
           <div class="history-card-header">
             <div>
               <h2 class="history-card-title">RIWAYAT AQI</h2>
@@ -681,6 +794,7 @@ function handleChartMouseLeave() {
             :user-location="userLocation"
             :is-live-tracking="isLiveTracking"
             :show-heat="heat"
+            :loading="isLoading"
             @select-station="onMapSelectStation"
           />
         </div>
@@ -688,18 +802,18 @@ function handleChartMouseLeave() {
         <!-- KOTAK INFORMASI TITIK TERPILIH DI SUDUT KIRI ATAS PETA -->
         <div class="station-map-selection">
           <span class="eyebrow">TITIK TERPILIH</span>
-          <strong>{{ station.name }}</strong>
+          <strong>{{ isLoading ? 'Memuat data stasiun...' : station.name }}</strong>
           <div class="flex items-center gap-2 mt-0.5">
             <span
               class="inline-block px-1.5 py-0.5 rounded text-[11px] font-bold"
               :style="{
-                backgroundColor: getAqiColor(station.value).bg,
-                color: getAqiColor(station.value).text,
+                backgroundColor: currentTheme.badgeBg,
+                color: currentTheme.badgeText,
               }"
             >
-              AQI {{ station.value }}
+              {{ isLoading ? 'AQI --' : `AQI ${station.value}` }}
             </span>
-            <span class="text-xs font-semibold text-[#33443d]">{{ status }}</span>
+            <span class="text-xs font-semibold text-[#33443d]">{{ isLoading ? 'Memuat data...' : status }}</span>
           </div>
         </div>
 
@@ -786,11 +900,49 @@ function handleChartMouseLeave() {
 
 /* 1. Riwayat AQI Card (Identik Gambar 2) */
 .station-history-card {
+  position: relative;
   border-radius: 14px;
   border: 1px solid #d8ddd2;
   background-color: #fafaf5;
   padding: 14px 16px;
   margin: 14px 0;
+  overflow: hidden;
+}
+
+.map-history-loading-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(250, 250, 245, 0.9);
+  backdrop-filter: blur(2px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  font-size: 12px;
+  color: #476645;
+  font-weight: 500;
+  border-radius: 14px;
+  z-index: 5;
+}
+
+.map-loading-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background-color: #10b981;
+  animation: mapDotPulse 1.4s ease-in-out infinite;
+}
+
+@keyframes mapDotPulse {
+  0%, 100% {
+    transform: scale(0.85);
+    opacity: 0.5;
+  }
+  50% {
+    transform: scale(1.3);
+    opacity: 1;
+    box-shadow: 0 0 10px rgba(16, 185, 129, 0.6);
+  }
 }
 
 .history-card-header {

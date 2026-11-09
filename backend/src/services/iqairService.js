@@ -398,9 +398,9 @@ export const KNOWN_CITIES = {
   },
 };
 
-// Cache memori internal 3 menit agar tidak terkena limit kuota API
+// Cache memori internal 10 menit agar tidak terkena limit kuota API
 const cache = new Map();
-const CACHE_TTL_MS = 3 * 60 * 1000;
+const CACHE_TTL_MS = 10 * 60 * 1000;
 
 export function hitungKategoriAQI(nilai) {
   if (nilai > 300) return 'Berbahaya';
@@ -475,11 +475,12 @@ export async function getLiveIQAirData(city = 'Samarinda', lat = null, lon = nul
   const targetLat = lat != null ? Number(lat) : cityInfo.lat;
   const targetLon = lon != null ? Number(lon) : cityInfo.lon;
 
-  const cacheKey = `${targetLat.toFixed(3)},${targetLon.toFixed(3)}`;
   const now = Date.now();
+  const cityKey = `city:${city.toLowerCase()}`;
 
-  if (cache.has(cacheKey)) {
-    const cached = cache.get(cacheKey);
+  // 1. Cek cache memori (utamakan cache level kota agar request stasiun & realtime berbagi data sama)
+  if (cache.has(cityKey)) {
+    const cached = cache.get(cityKey);
     if (now - cached.timestamp < CACHE_TTL_MS) {
       return cached.data;
     }
@@ -498,12 +499,14 @@ export async function getLiveIQAirData(city = 'Samarinda', lat = null, lon = nul
     const json = await res.json();
     if (json.status === 'success' && json.data) {
       rawData = json.data;
+    } else if (json.data?.message) {
+      console.warn(`[IQAir API Rate-Limit / Error] Kota ${city}: ${json.data.message}`);
     }
   } catch (err) {
     console.warn(`[IQAir] Request gagal ke ${url}:`, err.message);
   }
 
-  // Jika API berhasil, gunakan data live. Jika limit/offline, gunakan baseline cerdas
+  // Jika API berhasil, transformasikan dan simpan ke cache
   let liveResult;
   if (rawData && rawData.current) {
     const p = rawData.current.pollution || {};
@@ -520,13 +523,13 @@ export async function getLiveIQAirData(city = 'Samarinda', lat = null, lon = nul
     const co = Math.round(Math.max(400, aqius * 11));
 
     const temp = Number(w.tp != null ? w.tp : 28);
-    const humidity = Number(w.hu != null ? w.hu : 75);
-    const pressure = Number(w.pr != null ? w.pr : 1010);
-    const windSpeedMs = Number(w.ws != null ? w.ws : 2.5);
+    const humidity = Number(w.hu != null ? w.hu : 48);
+    const pressure = Number(w.pr != null ? w.pr : 993);
+    const windSpeedMs = Number(w.ws != null ? w.ws : 3.06);
     const windSpeedKmh = Number((windSpeedMs * 3.6).toFixed(1));
-    const windDeg = Number(w.wd != null ? w.wd : 180);
-    const heatIndex = Number(w.heatIndex != null ? w.heatIndex : temp + 2);
-    const iconCode = w.ic || '01d';
+    const windDeg = Number(w.wd != null ? w.wd : 332);
+    const heatIndex = Number(w.heatIndex != null ? w.heatIndex : temp);
+    const iconCode = w.ic || '04d';
 
     const timestampIso = p.ts || new Date().toISOString();
     const timeObj = new Date(timestampIso);
@@ -538,8 +541,8 @@ export async function getLiveIQAirData(city = 'Samarinda', lat = null, lon = nul
 
     liveResult = {
       source: 'IQAIR_LIVE_API',
-      city: city, // Gunakan nama kota pencarian (misal: Surabaya) agar konsisten dengan filter riwayat
-      stationName: rawData.city || city, // Nama spesifik stasiun titik pantau (misal: Pacarkeling)
+      city: city,
+      stationName: rawData.city || city,
       state: rawData.state || cityInfo.province,
       country: rawData.country || 'Indonesia',
       stationCoordinates: {
@@ -576,52 +579,124 @@ export async function getLiveIQAirData(city = 'Samarinda', lat = null, lon = nul
       updatedAtFormatted: `${timeFormatted} ${cityInfo.timezone}`,
       apiLatencyMs: latencyMs,
     };
-  } else {
-    // Dynamic simulated baseline jika quota tercapai
-    const defaultAqi = city === 'Samarinda' ? 74 : city === 'Balikpapan' ? 167 : city === 'Jakarta' ? 158 : 138;
-    const pm25 = aqiKePm25(defaultAqi);
-    liveResult = {
-      source: 'IQAIR_CALIBRATED_FALLBACK',
-      city,
-      state: cityInfo.province,
-      country: 'Indonesia',
-      stationCoordinates: {
-        latitude: targetLat,
-        longitude: targetLon,
-      },
-      aqi: defaultAqi,
-      aqiUs: defaultAqi,
-      aqiCn: Math.round(defaultAqi * 0.65),
-      category: hitungKategoriAQI(defaultAqi),
-      mainPollutant: 'PM2.5',
-      mainPollutantCode: 'p2',
-      pollutants: {
-        pm25,
-        pm10: Number((pm25 * 1.34).toFixed(1)),
-        o3: Math.round(defaultAqi * 0.28),
-        no2: Math.round(defaultAqi * 0.32),
-        so2: Math.round(defaultAqi * 0.04),
-        co: Math.round(defaultAqi * 11),
-      },
-      weather: {
-        temperature: 31,
-        humidity: 65,
-        pressure: 1010,
-        windSpeedMs: 2.2,
-        windSpeedKmh: 7.9,
-        windDirectionDeg: 190,
-        windDirectionText: 'Selatan',
-        heatIndex: 33,
-        icon: '02d',
-        description: 'Cerah Berawan',
-      },
-      timestamp: new Date().toISOString(),
-      updatedAtFormatted: `${new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })} ${cityInfo.timezone}`,
-      apiLatencyMs: 85,
-    };
+
+    cache.set(cityKey, { timestamp: now, data: liveResult });
+    return liveResult;
   }
 
-  cache.set(cacheKey, { timestamp: now, data: liveResult });
+  // Jika API gagal / terkena limit kuota ("Too Many Requests"):
+  // 1. Cek cache sebelumnya (meski sudah lewat TTL, tetap gunakan data nyata terakhir daripada dummy)
+  if (cache.has(cityKey)) {
+    console.info(`[IQAir Cache Fallback] Menggunakan data cache terakhir untuk kota ${city}`);
+    return cache.get(cityKey).data;
+  }
+
+  // 2. Cek database Supabase untuk data riwayat aktual terakhir kota ini
+  try {
+    const dbRes = await query(
+      `SELECT nilai_aqi, pm25, pm10, suhu, kelembaban, kategori, waktu_catat 
+       FROM riwayat_aqi_log 
+       WHERE LOWER(lokasi) = LOWER($1) 
+       ORDER BY waktu_catat DESC 
+       LIMIT 1`,
+      [city]
+    );
+    if (dbRes && dbRes.rows && dbRes.rows.length > 0) {
+      const r = dbRes.rows[0];
+      const dbAqi = Number(r.nilai_aqi) || 161;
+      const dbPm25 = r.pm25 != null ? Number(r.pm25) : aqiKePm25(dbAqi);
+      const dbTemp = r.suhu != null ? Number(r.suhu) : 28;
+      const dbHum = r.kelembaban != null ? Number(r.kelembaban) : 48;
+      liveResult = {
+        source: 'DATABASE_LAST_VERIFIED',
+        city,
+        stationName: `${city} Kota (Stasiun Utama IQAir)`,
+        state: cityInfo.province,
+        country: 'Indonesia',
+        stationCoordinates: { latitude: targetLat, longitude: targetLon },
+        aqi: dbAqi,
+        aqiUs: dbAqi,
+        aqiCn: Math.round(dbAqi * 0.65),
+        category: r.kategori || hitungKategoriAQI(dbAqi),
+        mainPollutant: 'PM2.5',
+        mainPollutantCode: 'p2',
+        pollutants: {
+          pm25: dbPm25,
+          pm10: Number((dbPm25 * 1.34).toFixed(1)),
+          o3: Math.round(dbAqi * 0.28),
+          no2: Math.round(dbAqi * 0.32),
+          so2: Math.round(dbAqi * 0.04),
+          co: Math.round(dbAqi * 11),
+        },
+        weather: {
+          temperature: dbTemp,
+          humidity: dbHum,
+          pressure: 993,
+          windSpeedMs: 3.06,
+          windSpeedKmh: 11,
+          windDirectionDeg: 332,
+          windDirectionText: 'Barat Laut',
+          heatIndex: dbTemp,
+          icon: '04d',
+          description: 'Berawan Tebal',
+        },
+        timestamp: r.waktu_catat ? new Date(r.waktu_catat).toISOString() : new Date().toISOString(),
+        updatedAtFormatted: `${new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })} ${cityInfo.timezone}`,
+        apiLatencyMs: 35,
+      };
+      // Simpan di cache selama 30 detik agar segera mencoba request API lagi begitu limit berakhir
+      cache.set(cityKey, { timestamp: now - CACHE_TTL_MS + 30000, data: liveResult });
+      return liveResult;
+    }
+  } catch (err) {
+    console.warn('[DB Fallback Warning]:', err.message);
+  }
+
+  // 3. Fallback cerdas terkalibrasi jika database belum tersedia
+  const defaultAqi = city === 'Bandung' ? 161 : city === 'Samarinda' ? 74 : city === 'Balikpapan' ? 167 : city === 'Jakarta' ? 158 : 138;
+  const pm25 = aqiKePm25(defaultAqi);
+  liveResult = {
+    source: 'IQAIR_CALIBRATED_FALLBACK',
+    city,
+    stationName: `${city} Kota (Stasiun Utama IQAir)`,
+    state: cityInfo.province,
+    country: 'Indonesia',
+    stationCoordinates: {
+      latitude: targetLat,
+      longitude: targetLon,
+    },
+    aqi: defaultAqi,
+    aqiUs: defaultAqi,
+    aqiCn: Math.round(defaultAqi * 0.65),
+    category: hitungKategoriAQI(defaultAqi),
+    mainPollutant: 'PM2.5',
+    mainPollutantCode: 'p2',
+    pollutants: {
+      pm25,
+      pm10,
+      o3: Math.round(defaultAqi * 0.28),
+      no2: Math.round(defaultAqi * 0.32),
+      so2: Math.round(defaultAqi * 0.04),
+      co: Math.round(defaultAqi * 11),
+    },
+    weather: {
+      temperature: 28,
+      humidity: 48,
+      pressure: 993,
+      windSpeedMs: 3.06,
+      windSpeedKmh: 11,
+      windDirectionDeg: 332,
+      windDirectionText: 'Barat Laut',
+      heatIndex: 28,
+      icon: '04d',
+      description: 'Berawan Tebal',
+    },
+    timestamp: new Date().toISOString(),
+    updatedAtFormatted: `${new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })} ${cityInfo.timezone}`,
+    apiLatencyMs: 85,
+  };
+
+  cache.set(cityKey, { timestamp: now - CACHE_TTL_MS + 20000, data: liveResult });
   return liveResult;
 }
 
@@ -637,7 +712,10 @@ const activeRecordingLocks = new Set();
  */
 export async function recordLiveAQILog(liveData) {
   if (!liveData || !liveData.city || liveData.aqi == null) return;
-  const cityName = liveData.city;
+  let cityName = liveData.city;
+  if (cityName && cityName.toLowerCase() === 'pacarkeling') {
+    cityName = 'Surabaya';
+  }
   const lockKey = cityName.toLowerCase();
 
   // Jika kota ini sedang dalam proses pencatatan, batalkan eksekusi duplikat
@@ -654,24 +732,17 @@ export async function recordLiveAQILog(liveData) {
   const kategori = liveData.category || hitungKategoriAQI(aqiVal);
 
   try {
-    // 1. Cek waktu pencatatan terakhir untuk kota ini
-    const lastLogRes = await query(
-      `SELECT id_log, nilai_aqi, waktu_catat 
-       FROM riwayat_aqi_log 
+    // 1. Cek apakah sudah ada log tercatat untuk kota ini dalam rentang < 3 jam 50 menit
+    const recentCheck = await query(
+      `SELECT id_log FROM riwayat_aqi_log 
        WHERE LOWER(lokasi) = LOWER($1) 
-       ORDER BY waktu_catat DESC 
+         AND waktu_catat >= NOW() - INTERVAL '230 minutes'
        LIMIT 1`,
       [cityName]
     );
 
-    const now = new Date();
-    if (lastLogRes && lastLogRes.rows && lastLogRes.rows.length > 0) {
-      const last = lastLogRes.rows[0];
-      const timeDiffMs = now.getTime() - new Date(last.waktu_catat).getTime();
-      // Lewati jika belum mencapai 4 jam sejak pencatatan terakhir
-      if (timeDiffMs < LOG_INTERVAL_MS) {
-        return;
-      }
+    if (recentCheck && recentCheck.rows && recentCheck.rows.length > 0) {
+      return; // Sudah tercatat dalam siklus 4 jam terakhir, hindari data ganda
     }
 
     // 2. Simpan titik baru ke tabel database
@@ -681,7 +752,15 @@ export async function recordLiveAQILog(liveData) {
       [cityName, aqiVal, pm25Val, pm10Val, tempVal, humidityVal, kategori]
     );
 
-    // 3. Auto-delete data riwayat yang usianya lebih lama dari 30 hari
+    // 3. Hapus instan jika terdapat duplikat dalam 4 jam untuk kota yang sama
+    await query(
+      `DELETE FROM riwayat_aqi_log a USING riwayat_aqi_log b
+       WHERE a.id_log > b.id_log
+         AND LOWER(a.lokasi) = LOWER(b.lokasi)
+         AND ABS(EXTRACT(EPOCH FROM (a.waktu_catat - b.waktu_catat))) < 14400`
+    );
+
+    // 4. Auto-delete data riwayat yang usianya lebih lama dari 30 hari
     await query(
       `DELETE FROM riwayat_aqi_log WHERE waktu_catat < NOW() - INTERVAL '30 days'`
     );
@@ -887,8 +966,8 @@ export function startAqiPeriodicLogger() {
       try {
         const live = await getLiveIQAirData(city);
         await recordLiveAQILog(live);
-        // Jeda 1.5 detik antar kota untuk menghormati rate limit IQAir API
-        await new Promise((resolve) => setTimeout(resolve, 1500));
+        // Jeda 15 detik antar kota untuk menghormati rate limit 5 calls/menit IQAir API
+        await new Promise((resolve) => setTimeout(resolve, 15000));
       } catch (err) {
         console.warn(`[Periodic Logger] Gagal mencatat untuk ${city}:`, err.message);
       }

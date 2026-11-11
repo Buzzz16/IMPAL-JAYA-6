@@ -197,10 +197,6 @@ function navigate(next) {
     const subPath = next === 'dashboard' ? '/admin' : `/admin/${next}`;
     window.history.pushState(null, '', subPath);
   }
-
-  if (next !== 'login') {
-    loadAdminData(true);
-  }
 }
 
 const popular = computed(() =>
@@ -239,8 +235,8 @@ const uniqueTopics = computed(() => [
 function handleCoverUpload(event) {
   const file = event.target.files?.[0];
   if (!file) return;
-  if (file.size > 5 * 1024 * 1024 || !['image/png', 'image/jpeg'].includes(file.type)) {
-    error.value = 'Cover harus JPG atau PNG, maksimal 5 MB.';
+  if (file.size > 5 * 1024 * 1024 || !['image/png', 'image/jpeg', 'image/webp'].includes(file.type)) {
+    error.value = 'Cover harus JPG, PNG, atau WebP, maksimal 5 MB.';
     return;
   }
   uploading.value = true;
@@ -249,12 +245,33 @@ function handleCoverUpload(event) {
     uploading.value = false;
     error.value = 'Cover gagal dibaca. Silakan coba lagi.';
   };
-  reader.onload = () => {
-    uploading.value = false;
-    if (draft.value) {
-      draft.value = { ...draft.value, cover: String(reader.result) };
-    }
-    error.value = '';
+  reader.onload = (e) => {
+    const img = new Image();
+    img.onerror = () => {
+      uploading.value = false;
+      error.value = 'Cover gagal diproses. Silakan coba lagi.';
+    };
+    img.onload = () => {
+      let width = img.width;
+      let height = img.height;
+      const maxWidth = 720;
+      if (width > maxWidth) {
+        height = Math.round((height * maxWidth) / width);
+        width = maxWidth;
+      }
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0, width, height);
+      const compressedCover = canvas.toDataURL('image/jpeg', 0.65);
+      uploading.value = false;
+      if (draft.value) {
+        draft.value = { ...draft.value, cover: compressedCover };
+      }
+      error.value = '';
+    };
+    img.src = String(e.target?.result || '');
   };
   reader.readAsDataURL(file);
 }

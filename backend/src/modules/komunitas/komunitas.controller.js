@@ -7,11 +7,22 @@
 
 import { query } from '../../config/db.js';
 
-
-function mapSupabaseRowToReport(row) {
-  const photo = row.url_foto_bukti || row.media_lampiran || '';
-  const parsedLikes = typeof row.likes_count === 'number' ? row.likes_count : parseInt(row.likes_count || '0', 10);
+function mapSupabaseRowToReport(row, currentUserId = null, currentClientId = null) {
+  const photo = row.photo_url || row.url_foto_bukti || row.media_lampiran || '';
+  const parsedLikes =
+    typeof row.likes_count === 'number'
+      ? row.likes_count
+      : parseInt(row.likes_count || '0', 10);
   const parsedComments = Array.isArray(row.comments) ? row.comments : [];
+  const likedByArr = Array.isArray(row.liked_by) ? row.liked_by : [];
+  const isLiked =
+    typeof row.liked === 'boolean'
+      ? row.liked
+      : Boolean(
+          (currentUserId && likedByArr.includes(currentUserId)) ||
+            (currentClientId && likedByArr.includes(currentClientId))
+        );
+
   return {
     id: `post-${row.id_post}`,
     id_post: row.id_post,
@@ -21,8 +32,12 @@ function mapSupabaseRowToReport(row) {
     ticket: row.nomor_tiket || `#TKT-${row.id_post}`,
     author: row.nama_lengkap || 'Pengguna PoluSee',
     user: `@${(row.nama_lengkap || 'pengguna').toLowerCase().replace(/\s+/g, '')}`,
-    avatar: row.foto_profil || 'https://images.unsplash.com/photo-1630678334641-0c5339dfd1a7?auto=format&fit=crop&w=500&q=85',
-    city: row.alamat_lokasi ? (row.alamat_lokasi.split(',').pop()?.trim() || 'Samarinda') : 'Samarinda',
+    avatar:
+      row.foto_profil ||
+      'https://images.unsplash.com/photo-1630678334641-0c5339dfd1a7?auto=format&fit=crop&w=500&q=85',
+    city: row.alamat_lokasi
+      ? row.alamat_lokasi.split(',').pop()?.trim() || 'Samarinda'
+      : 'Samarinda',
     area: row.alamat_lokasi || 'Samarinda',
     address: row.alamat_lokasi || 'Samarinda',
     condition: row.kategori_polusi || 'Asap & Debu',
@@ -32,24 +47,40 @@ function mapSupabaseRowToReport(row) {
     date: row.created_at || new Date().toISOString(),
     status: row.status_verifikasi || 'TERVERIFIKASI',
     badge: row.status_verifikasi || 'TERVERIFIKASI',
-    photo: photo || 'https://images.unsplash.com/photo-1555066657-4ea53882eaba?auto=format&fit=crop&w=1200&q=85',
-    image: photo || 'https://images.unsplash.com/photo-1555066657-4ea53882eaba?auto=format&fit=crop&w=1200&q=85',
+    photo:
+      photo ||
+      'https://images.unsplash.com/photo-1555066657-4ea53882eaba?auto=format&fit=crop&w=1200&q=85',
+    image:
+      photo ||
+      'https://images.unsplash.com/photo-1555066657-4ea53882eaba?auto=format&fit=crop&w=1200&q=85',
     url_foto_bukti: photo,
     lat: row.latitude ? Number(row.latitude) : -0.5022,
     lon: row.longitude ? Number(row.longitude) : 117.1536,
     likes: parsedLikes,
-    liked: Boolean(row.liked),
+    liked: isLiked,
     comments: parsedComments,
   };
 }
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
-const feedCache = new Map();
-const FEED_CACHE_TTL = 30000; // 30 detik TTL
+// Cache global lintas-pengguna untuk menekan Egress Supabase secara drastis
+let sharedFeedRowsCache = null;
+let sharedFeedCacheTimestamp = 0;
+const FEED_CACHE_TTL = 5 * 60 * 1000; // 5 menit TTL (diperbarui in-memory saat ada aksi)
 
 export function invalidateFeedCache() {
-  feedCache.clear();
+  sharedFeedRowsCache = null;
+  sharedFeedCacheTimestamp = 0;
+}
+
+export function removePostFromFeedCache(postId) {
+  if (Array.isArray(sharedFeedRowsCache)) {
+    const numId = Number(postId);
+    sharedFeedRowsCache = sharedFeedRowsCache.filter(
+      (r) => r.id_post !== numId && r.nomor_tiket !== String(postId)
+    );
+  }
 }
 
 export function isValidUuid(id) {
@@ -67,32 +98,37 @@ async function getValidDbUserId(id) {
   return null;
 }
 
-// UC-08: Ambil Feed Komunitas langsung dari Supabase Database (termasuk Like & Komentar)
+// UC-08: Ambil Feed Komunitas dengan Global Shared Cache & Tanpa Duplikasi Kolom Base64
 export async function getFeedKomunitas(req, res) {
   try {
     const rawUserId = req.user?.id_akun || null;
     const currentUserId = isValidUuid(rawUserId) ? rawUserId : null;
     const currentClientId = req.headers['x-client-id'] || req.query.client_id || null;
 
-    const cacheKey = `${currentUserId || 'anon'}_${currentClientId || 'anon'}`;
-    const cached = feedCache.get(cacheKey);
-    if (cached && (Date.now() - cached.timestamp < FEED_CACHE_TTL)) {
-      return res.status(200).json(cached.payload);
+    const now = Date.now();
+    if (sharedFeedRowsCache && now - sharedFeedCacheTimestamp < FEED_CACHE_TTL) {
+      res.locals.dbLog = `Cache hit (${sharedFeedRowsCache.length} postingan, 0 B egress)`;
+      const reports = sharedFeedRowsCache.map((r) =>
+        mapSupabaseRowToReport(r, currentUserId, currentClientId)
+      );
+      return res.status(200).json({
+        feed_komunitas: reports,
+        reports,
+      });
     }
 
+    // Hindari SELECT p.* + l.url_foto_bukti bersamaan agar gambar Base64 tidak terkirim 2x lipat
     const result = await query(
-      `SELECT p.*, l.id_laporan, l.nomor_tiket, l.kategori_polusi, l.deskripsi_kejadian,
-              l.alamat_lokasi, l.latitude, l.longitude, l.url_foto_bukti, l.status_verifikasi,
-              COALESCE(a.nama_lengkap, 'Pengguna PoluSee') as nama_lengkap,
+      `SELECT p.id_post, p.id_user, p.judul_post, p.isi_konten,
+              COALESCE(NULLIF(p.media_lampiran, ''), l.url_foto_bukti) AS photo_url,
+              COALESCE(p.jumlah_like, 0) AS likes_count,
+              COALESCE(p.liked_by, '{}') AS liked_by,
+              p.status_moderasi, p.created_at,
+              l.id_laporan, l.nomor_tiket, l.kategori_polusi, l.deskripsi_kejadian,
+              l.alamat_lokasi, l.latitude, l.longitude, l.status_verifikasi,
+              COALESCE(a.nama_lengkap, 'Pengguna PoluSee') AS nama_lengkap,
               a.email,
               u.foto_profil,
-              COALESCE(p.jumlah_like, 0) AS likes_count,
-              (
-                CASE WHEN (
-                  ($1::text IS NOT NULL AND $1::text = ANY(p.liked_by))
-                  OR ($2::text IS NOT NULL AND $2::text = ANY(p.liked_by))
-                ) THEN true ELSE false END
-              ) AS liked,
               (
                 SELECT COALESCE(
                   json_agg(
@@ -118,21 +154,26 @@ export async function getFeedKomunitas(req, res) {
        LEFT JOIN akun a ON p.id_user = a.id_akun
        LEFT JOIN users u ON p.id_user = u.id_akun
        WHERE p.status_moderasi = 'AKTIF'
-       ORDER BY p.created_at DESC`,
-      [currentUserId, currentClientId]
+       ORDER BY p.created_at DESC
+       LIMIT 35`
     );
-    const count = result?.rows?.length || 0;
-    res.locals.dbLog = `Ditemukan ${count} postingan`;
-    const reports = (result?.rows || []).map(mapSupabaseRowToReport);
-    const responsePayload = {
+
+    const rows = result?.rows || [];
+    sharedFeedRowsCache = rows;
+    sharedFeedCacheTimestamp = Date.now();
+
+    res.locals.dbLog = `Ditemukan ${rows.length} postingan (disimpan ke shared cache)`;
+    const reports = rows.map((r) => mapSupabaseRowToReport(r, currentUserId, currentClientId));
+    return res.status(200).json({
       feed_komunitas: reports,
-      reports: reports,
-    };
-    feedCache.set(cacheKey, { timestamp: Date.now(), payload: responsePayload });
-    return res.status(200).json(responsePayload);
+      reports,
+    });
   } catch (err) {
     res.locals.dbLog = `Gagal query: ${err.message}`;
-    return res.status(500).json({ message: 'Gagal memuat feed komunitas dari database Supabase.', error: err.message });
+    return res.status(500).json({
+      message: 'Gagal memuat feed komunitas dari database Supabase.',
+      error: err.message,
+    });
   }
 }
 
@@ -161,14 +202,32 @@ export async function createPostKomunitas(req, res) {
     const insertRes = await query(
       `INSERT INTO post_komunitas (id_user, judul_post, isi_konten, media_lampiran, status_moderasi, jumlah_like, liked_by)
        VALUES ($1, $2, $3, $4, 'AKTIF', 0, '{}')
-       RETURNING *`,
+       RETURNING id_post, id_user, judul_post, isi_konten, status_moderasi, jumlah_like, liked_by, created_at`,
       [idUser, judul_post.trim(), isi_konten.trim(), media_lampiran || null]
     );
 
     if (insertRes && insertRes.rows.length > 0) {
-      invalidateFeedCache();
-      res.locals.dbLog = `Post #${insertRes.rows[0].id_post} berhasil dibuat`;
-      return res.status(201).json({ post_baru: insertRes.rows[0] });
+      const created = {
+        ...insertRes.rows[0],
+        media_lampiran: media_lampiran || null,
+      };
+      if (Array.isArray(sharedFeedRowsCache)) {
+        sharedFeedRowsCache = [
+          {
+            ...created,
+            photo_url: created.media_lampiran || '',
+            nama_lengkap: req.user?.nama_lengkap || 'Pengguna PoluSee',
+            email: req.user?.email || '',
+            foto_profil: req.user?.foto_profil || '',
+            likes_count: 0,
+            liked_by: [],
+            comments: [],
+          },
+          ...sharedFeedRowsCache,
+        ].slice(0, 35);
+      }
+      res.locals.dbLog = `Post #${created.id_post} berhasil dibuat`;
+      return res.status(201).json({ post_baru: created });
     }
   } catch (err) {
     res.locals.dbLog = `Gagal buat post: ${err.message}`;
@@ -176,7 +235,7 @@ export async function createPostKomunitas(req, res) {
   }
 }
 
-// UC-09: Lapor Kejadian Polusi (Tersimpan ke Supabase Cloud)
+// UC-09: Lapor Kejadian Polusi (Tersimpan ke Supabase Cloud tanpa duplikasi Base64)
 export async function createLaporanPolusi(req, res) {
   const {
     caption,
@@ -223,19 +282,24 @@ export async function createLaporanPolusi(req, res) {
     const postRes = await query(
       `INSERT INTO post_komunitas (id_user, judul_post, isi_konten, media_lampiran, status_moderasi, jumlah_like, liked_by)
        VALUES ($1, $2, $3, $4, 'AKTIF', 0, '{}')
-       RETURNING *`,
+       RETURNING id_post, id_user, judul_post, isi_konten, status_moderasi, jumlah_like, liked_by, created_at`,
       [idUser, deskripsi.slice(0, 140), deskripsi, foto]
     );
 
     if (postRes && postRes.rows.length > 0) {
-      const newPost = postRes.rows[0];
+      const newPost = {
+        ...postRes.rows[0],
+        media_lampiran: foto,
+      };
+      // Hindari menyimpan string Base64 dua kali ke dua tabel berbeda (cukup di post_komunitas.media_lampiran)
+      const urlFotoBukti = foto && !foto.startsWith('data:') ? foto : null;
       const laporRes = await query(
         `INSERT INTO laporan_polusi (
            nomor_tiket, id_post, id_user, kategori_polusi, deskripsi_kejadian,
            alamat_lokasi, latitude, longitude, url_foto_bukti, status_verifikasi
          )
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'TERVERIFIKASI')
-         RETURNING *`,
+         RETURNING id_laporan, nomor_tiket, id_post, id_user, kategori_polusi, deskripsi_kejadian, alamat_lokasi, latitude, longitude, status_verifikasi, waktu_lapor`,
         [
           nomorTiket,
           newPost.id_post,
@@ -245,21 +309,29 @@ export async function createLaporanPolusi(req, res) {
           alamat,
           latitude || null,
           longitude || null,
-          foto,
+          urlFotoBukti,
         ]
       );
 
       const fullRow = {
         ...newPost,
         ...(laporRes.rows[0] || {}),
+        photo_url: foto,
+        url_foto_bukti: foto,
         nama_lengkap: req.user?.nama_lengkap || 'Pengguna PoluSee',
+        email: req.user?.email || '',
         foto_profil: req.user?.foto_profil || '',
         likes_count: 0,
+        liked_by: [],
         liked: false,
         comments: [],
       };
       const mappedReport = mapSupabaseRowToReport(fullRow);
-      invalidateFeedCache();
+      if (Array.isArray(sharedFeedRowsCache)) {
+        sharedFeedRowsCache = [fullRow, ...sharedFeedRowsCache].slice(0, 35);
+      } else {
+        invalidateFeedCache();
+      }
       res.locals.dbLog = `Laporan ${nomorTiket} berhasil disimpan`;
 
       return res.status(201).json({
@@ -271,7 +343,10 @@ export async function createLaporanPolusi(req, res) {
     }
   } catch (err) {
     res.locals.dbLog = `Gagal simpan laporan: ${err.message}`;
-    return res.status(500).json({ message: 'Gagal menyimpan laporan ke database Supabase', error: err.message });
+    return res.status(500).json({
+      message: 'Gagal menyimpan laporan ke database Supabase',
+      error: err.message,
+    });
   }
 }
 
@@ -284,19 +359,30 @@ export async function getDetailPostKomunitas(req, res) {
     const currentUserId = isValidUuid(rawUserId) ? rawUserId : null;
     const currentClientId = req.headers['x-client-id'] || req.query.client_id || null;
 
+    const numId = isNaN(Number(cleanId)) ? -1 : Number(cleanId);
+    if (Array.isArray(sharedFeedRowsCache)) {
+      const cachedRow = sharedFeedRowsCache.find(
+        (r) => r.id_post === numId || r.nomor_tiket === String(id_post)
+      );
+      if (cachedRow) {
+        res.locals.dbLog = `Detail post #${cleanId} dari cache (0 B egress)`;
+        return res.status(200).json({
+          detail_post: mapSupabaseRowToReport(cachedRow, currentUserId, currentClientId),
+        });
+      }
+    }
+
     const result = await query(
-      `SELECT p.*, l.id_laporan, l.nomor_tiket, l.kategori_polusi, l.deskripsi_kejadian,
-              l.alamat_lokasi, l.latitude, l.longitude, l.url_foto_bukti, l.status_verifikasi,
-              COALESCE(a.nama_lengkap, 'Pengguna PoluSee') as nama_lengkap,
+      `SELECT p.id_post, p.id_user, p.judul_post, p.isi_konten,
+              COALESCE(NULLIF(p.media_lampiran, ''), l.url_foto_bukti) AS photo_url,
+              COALESCE(p.jumlah_like, 0) AS likes_count,
+              COALESCE(p.liked_by, '{}') AS liked_by,
+              p.status_moderasi, p.created_at,
+              l.id_laporan, l.nomor_tiket, l.kategori_polusi, l.deskripsi_kejadian,
+              l.alamat_lokasi, l.latitude, l.longitude, l.status_verifikasi,
+              COALESCE(a.nama_lengkap, 'Pengguna PoluSee') AS nama_lengkap,
               a.email,
               u.foto_profil,
-              COALESCE(p.jumlah_like, 0) AS likes_count,
-              (
-                CASE WHEN (
-                  ($1::text IS NOT NULL AND $1::text = ANY(p.liked_by))
-                  OR ($2::text IS NOT NULL AND $2::text = ANY(p.liked_by))
-                ) THEN true ELSE false END
-              ) AS liked,
               (
                 SELECT COALESCE(
                   json_agg(
@@ -321,19 +407,16 @@ export async function getDetailPostKomunitas(req, res) {
        LEFT JOIN laporan_polusi l ON p.id_post = l.id_post
        LEFT JOIN akun a ON p.id_user = a.id_akun
        LEFT JOIN users u ON p.id_user = u.id_akun
-       WHERE p.id_post = $3 OR l.nomor_tiket = $4
+       WHERE p.id_post = $1 OR l.nomor_tiket = $2
        LIMIT 1`,
-      [
-        currentUserId,
-        currentClientId,
-        isNaN(Number(cleanId)) ? -1 : Number(cleanId),
-        String(id_post),
-      ]
+      [numId, String(id_post)]
     );
 
     if (result && result.rows.length > 0) {
       res.locals.dbLog = `Detail post #${cleanId} ditemukan`;
-      return res.status(200).json({ detail_post: mapSupabaseRowToReport(result.rows[0]) });
+      return res.status(200).json({
+        detail_post: mapSupabaseRowToReport(result.rows[0], currentUserId, currentClientId),
+      });
     }
     return res.status(404).json({ message: 'Konten tidak ditemukan atau telah dihapus.' });
   } catch (err) {
@@ -379,7 +462,7 @@ export async function toggleLikePost(req, res) {
       updatedRes = await query(
         `UPDATE post_komunitas
          SET liked_by = array_remove(liked_by, $1),
-             jumlah_like = GREATEST(0, jumlah_like - 1)
+              jumlah_like = GREATEST(0, jumlah_like - 1)
          WHERE id_post = $2
          RETURNING jumlah_like, liked_by`,
         [userIdentifier, postId]
@@ -390,7 +473,7 @@ export async function toggleLikePost(req, res) {
       updatedRes = await query(
         `UPDATE post_komunitas
          SET liked_by = array_append(liked_by, $1),
-             jumlah_like = jumlah_like + 1
+              jumlah_like = jumlah_like + 1
          WHERE id_post = $2
          RETURNING jumlah_like, liked_by`,
         [userIdentifier, postId]
@@ -399,9 +482,19 @@ export async function toggleLikePost(req, res) {
     }
 
     const totalLikes = updatedRes.rows[0]?.jumlah_like || 0;
+    const updatedLikedBy = updatedRes.rows[0]?.liked_by || [];
     res.locals.dbLog = `Post #${postId} ${liked ? 'disukai' : 'batal disukai'} (${totalLikes} suka)`;
 
-    invalidateFeedCache();
+    // Update in-memory cache tanpa menghapus cache agar tidak memicu SELECT ulang Base64
+    if (Array.isArray(sharedFeedRowsCache)) {
+      const targetRow = sharedFeedRowsCache.find((r) => r.id_post === postId);
+      if (targetRow) {
+        targetRow.likes_count = totalLikes;
+        targetRow.jumlah_like = totalLikes;
+        targetRow.liked_by = updatedLikedBy;
+      }
+    }
+
     return res.status(200).json({
       success: true,
       liked,
@@ -487,10 +580,20 @@ export async function addCommentToPost(req, res) {
       text: row.isi_komentar,
       isi: row.isi_komentar,
       created_at: row.created_at,
-      time: new Date(row.created_at).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
+      time: new Date(row.created_at).toLocaleTimeString('id-ID', {
+        hour: '2-digit',
+        minute: '2-digit',
+      }),
     }));
 
-    invalidateFeedCache();
+    // Update komentar di dalam shared cache tanpa menghapus cache gambar Base64
+    if (Array.isArray(sharedFeedRowsCache)) {
+      const targetRow = sharedFeedRowsCache.find((r) => r.id_post === postId);
+      if (targetRow) {
+        targetRow.comments = allComments;
+      }
+    }
+
     return res.status(201).json({
       success: true,
       comment: commentObj,
@@ -564,18 +667,22 @@ export async function updatePostKomunitas(req, res) {
     const newCaption = (caption ?? deskripsi_kejadian ?? '').trim();
     const kota = city || '';
     const rawArea = (area ?? address ?? alamat_lokasi ?? '').trim();
-    const finalAddress = rawArea ? (kota && !rawArea.includes(kota) ? `${rawArea}, ${kota}` : rawArea) : null;
+    const finalAddress = rawArea
+      ? kota && !rawArea.includes(kota)
+        ? `${rawArea}, ${kota}`
+        : rawArea
+      : null;
     const newKategori = kategori_polusi || category || condition || source || null;
     const newPhoto = url_foto_bukti || image || photo || null;
 
-    // 2. Update post_komunitas
+    // 2. Update post_komunitas (hindari RETURNING media_lampiran berukuran besar)
     const updatePostRes = await query(
       `UPDATE post_komunitas
        SET isi_konten = COALESCE(NULLIF($1, ''), isi_konten),
            judul_post = COALESCE(NULLIF($2, ''), judul_post),
            media_lampiran = COALESCE($3, media_lampiran)
        WHERE id_post = $4
-       RETURNING *`,
+       RETURNING id_post, id_user, judul_post, isi_konten, status_moderasi, jumlah_like, liked_by, created_at`,
       [newCaption || null, newCaption ? newCaption.slice(0, 140) : null, newPhoto, cleanId]
     );
 
@@ -583,37 +690,43 @@ export async function updatePostKomunitas(req, res) {
       return res.status(404).json({ message: 'Post tidak ditemukan di database.' });
     }
 
-    // 3. Update laporan_polusi jika ada relasi
+    // 3. Update laporan_polusi jika ada relasi (tanpa menyimpan duplikat Base64 di url_foto_bukti)
+    const urlFotoBukti = newPhoto && !newPhoto.startsWith('data:') ? newPhoto : null;
     await query(
       `UPDATE laporan_polusi
        SET deskripsi_kejadian = COALESCE(NULLIF($1, ''), deskripsi_kejadian),
            kategori_polusi = COALESCE($2, kategori_polusi),
            alamat_lokasi = COALESCE(NULLIF($3, ''), alamat_lokasi),
-           url_foto_bukti = COALESCE($4, url_foto_bukti),
-           latitude = COALESCE($5, latitude),
-           longitude = COALESCE($6, longitude)
-       WHERE id_post = $7`,
-      [newCaption || null, newKategori, finalAddress, newPhoto, latitude || null, longitude || null, cleanId]
+           url_foto_bukti = CASE WHEN $4::text IS NOT NULL AND $4::text LIKE 'data:%' THEN NULL ELSE COALESCE($5, url_foto_bukti) END,
+           latitude = COALESCE($6, latitude),
+           longitude = COALESCE($7, longitude)
+       WHERE id_post = $8`,
+      [
+        newCaption || null,
+        newKategori,
+        finalAddress,
+        newPhoto,
+        urlFotoBukti,
+        latitude || null,
+        longitude || null,
+        cleanId,
+      ]
     );
 
-    invalidateFeedCache();
-
-    // 4. Ambil data gabungan terbaru
+    // 4. Ambil data gabungan terbaru tanpa duplikasi kolom gambar
     const currentClientId = req.headers['x-client-id'] || req.query.client_id || null;
 
     const result = await query(
-      `SELECT p.*, l.id_laporan, l.nomor_tiket, l.kategori_polusi, l.deskripsi_kejadian,
-              l.alamat_lokasi, l.latitude, l.longitude, l.url_foto_bukti, l.status_verifikasi,
-              COALESCE(a.nama_lengkap, 'Pengguna PoluSee') as nama_lengkap,
+      `SELECT p.id_post, p.id_user, p.judul_post, p.isi_konten,
+              COALESCE(NULLIF(p.media_lampiran, ''), l.url_foto_bukti) AS photo_url,
+              COALESCE(p.jumlah_like, 0) AS likes_count,
+              COALESCE(p.liked_by, '{}') AS liked_by,
+              p.status_moderasi, p.created_at,
+              l.id_laporan, l.nomor_tiket, l.kategori_polusi, l.deskripsi_kejadian,
+              l.alamat_lokasi, l.latitude, l.longitude, l.status_verifikasi,
+              COALESCE(a.nama_lengkap, 'Pengguna PoluSee') AS nama_lengkap,
               a.email,
               u.foto_profil,
-              COALESCE(p.jumlah_like, 0) AS likes_count,
-              (
-                CASE WHEN (
-                  ($1::text IS NOT NULL AND $1::text = ANY(p.liked_by))
-                  OR ($2::text IS NOT NULL AND $2::text = ANY(p.liked_by))
-                ) THEN true ELSE false END
-              ) AS liked,
               (
                 SELECT COALESCE(
                   json_agg(
@@ -638,13 +751,17 @@ export async function updatePostKomunitas(req, res) {
        LEFT JOIN laporan_polusi l ON p.id_post = l.id_post
        LEFT JOIN akun a ON p.id_user = a.id_akun
        LEFT JOIN users u ON p.id_user = u.id_akun
-       WHERE p.id_post = $3
+       WHERE p.id_post = $1
        LIMIT 1`,
-      [currentUserId, currentClientId, cleanId]
+      [cleanId]
     );
 
     const fullRow = result.rows[0] || updatePostRes.rows[0];
-    const mapped = mapSupabaseRowToReport(fullRow);
+    if (Array.isArray(sharedFeedRowsCache)) {
+      sharedFeedRowsCache = sharedFeedRowsCache.map((r) => (r.id_post === cleanId ? fullRow : r));
+    }
+
+    const mapped = mapSupabaseRowToReport(fullRow, currentUserId, currentClientId);
 
     res.locals.dbLog = `Post #${cleanId} berhasil diperbarui`;
     return res.status(200).json({
@@ -709,7 +826,7 @@ export async function deletePostKomunitas(req, res) {
       return res.status(404).json({ message: 'Post tidak ditemukan.' });
     }
 
-    invalidateFeedCache();
+    removePostFromFeedCache(cleanId);
     res.locals.dbLog = `Post #${cleanId} berhasil dihapus`;
     return res.status(200).json({
       success: true,

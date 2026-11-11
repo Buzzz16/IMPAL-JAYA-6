@@ -11,6 +11,15 @@ import {
   getLiveCityStations,
   hitungKategoriAQI,
 } from '../../services/iqairService.js';
+import {
+  invalidateFeedCache,
+  removePostFromFeedCache,
+} from '../komunitas/komunitas.controller.js';
+import { invalidateEdukasiCache } from '../edukasi/edukasi.controller.js';
+import {
+  getAllRekomendasiRules,
+  invalidateRekomendasiCache,
+} from '../rekomendasi/rekomendasi.controller.js';
 
 // UC-12: Monitor & Validasi Data AQI (Integrasi API Eksternal IQAir)
 export async function getMonitoringAQI(req, res) {
@@ -82,7 +91,10 @@ export async function sinkronisasiDataAQI(req, res) {
       });
     }
   } catch (err) {
-    return res.status(500).json({ message: 'Gagal menyimpan data AQI ke Supabase', error: err.message });
+    return res.status(500).json({
+      message: 'Gagal menyimpan data AQI ke Supabase',
+      error: err.message,
+    });
   }
 
   return res.status(201).json({
@@ -101,12 +113,16 @@ export async function sinkronisasiDataAQI(req, res) {
 // UC-13: Kelola Rekomendasi Kesehatan (GET)
 export async function getDaftarRekomendasiAdmin(_req, res) {
   try {
-    const result = await query(
-      'SELECT * FROM rekomendasi_kesehatan ORDER BY batas_bawah_aqi ASC'
-    );
-    return res.status(200).json({ list_rekomendasi: result?.rows || [] });
+    const { rows, fromCache } = await getAllRekomendasiRules();
+    res.locals.dbLog = fromCache
+      ? 'Aturan rekomendasi dari cache (0 B egress)'
+      : `Dimuat ${rows.length} aturan rekomendasi`;
+    return res.status(200).json({ list_rekomendasi: rows });
   } catch (err) {
-    return res.status(500).json({ message: 'Gagal memuat aturan rekomendasi dari Supabase.', error: err.message });
+    return res.status(500).json({
+      message: 'Gagal memuat aturan rekomendasi dari Supabase.',
+      error: err.message,
+    });
   }
 }
 
@@ -147,32 +163,76 @@ export async function updateRekomendasiAdmin(req, res) {
         id,
       ]
     );
-    return res.status(200).json({ message: 'Rekomendasi kesehatan berhasil diperbarui di Supabase' });
+    invalidateRekomendasiCache();
+    return res.status(200).json({
+      message: 'Rekomendasi kesehatan berhasil diperbarui di Supabase',
+    });
   } catch (err) {
-    return res.status(500).json({ message: 'Gagal memperbarui rekomendasi di Supabase.', error: err.message });
+    return res.status(500).json({
+      message: 'Gagal memperbarui rekomendasi di Supabase.',
+      error: err.message,
+    });
   }
 }
 
-// UC-14: Moderasi Konten Komunitas (GET)
+let cachedModerasiReports = null;
+let cachedModerasiTime = 0;
+const MODERASI_CACHE_TTL = 3 * 60 * 1000; // 3 menit TTL
+
+function invalidateModerasiCache() {
+  cachedModerasiReports = null;
+  cachedModerasiTime = 0;
+}
+
+// UC-14: Moderasi Konten Komunitas (GET) — Hindari SELECT * dan duplikasi payload
 export async function getAntreanModerasi(_req, res) {
   try {
+    const now = Date.now();
+    if (cachedModerasiReports && now - cachedModerasiTime < MODERASI_CACHE_TTL) {
+      res.locals.dbLog = `Moderasi dari cache (${cachedModerasiReports.length} laporan, 0 B egress)`;
+      return res.status(200).json({
+        daftar_moderasi: cachedModerasiReports,
+        reports: cachedModerasiReports,
+      });
+    }
+
     const result = await query(
-      `SELECT p.*, l.id_laporan, l.nomor_tiket, l.kategori_polusi, l.status_verifikasi
+      `SELECT p.id_post, p.judul_post, p.isi_konten, p.jumlah_like, p.status_moderasi, p.created_at,
+              COALESCE(NULLIF(p.media_lampiran, ''), l.url_foto_bukti) AS photo_url,
+              l.id_laporan, l.nomor_tiket, l.kategori_polusi, l.alamat_lokasi, l.status_verifikasi,
+              COALESCE(a.nama_lengkap, 'Pengguna PoluSee') AS nama_lengkap
        FROM post_komunitas p
        LEFT JOIN laporan_polusi l ON p.id_post = l.id_post
-       ORDER BY p.created_at DESC`
+       LEFT JOIN akun a ON p.id_user = a.id_akun
+       ORDER BY p.created_at DESC
+       LIMIT 35`
     );
     const reports = (result?.rows || []).map((r) => ({
       id: `post-${r.id_post}`,
+      id_post: r.id_post,
       ticket: r.nomor_tiket || `#TKT-${r.id_post}`,
+      author: r.nama_lengkap || 'Pengguna PoluSee',
       caption: r.isi_konten || r.judul_post,
+      condition: r.kategori_polusi || 'normal',
+      area: r.alamat_lokasi || 'Samarinda',
+      city: r.alamat_lokasi
+        ? r.alamat_lokasi.split(',').pop()?.trim() || 'Samarinda'
+        : 'Samarinda',
       status: r.status_verifikasi || 'TERVERIFIKASI',
+      likes: r.jumlah_like || 0,
+      photo: r.photo_url || '',
+      image: r.photo_url || '',
       date: r.created_at,
       time: new Date(r.created_at).toLocaleDateString('id-ID'),
     }));
-    return res.status(200).json({ daftar_moderasi: result?.rows || [], reports });
+    cachedModerasiReports = reports;
+    cachedModerasiTime = Date.now();
+    return res.status(200).json({ daftar_moderasi: reports, reports });
   } catch (err) {
-    return res.status(500).json({ message: 'Gagal memuat antrean moderasi dari Supabase.', error: err.message });
+    return res.status(500).json({
+      message: 'Gagal memuat antrean moderasi dari Supabase.',
+      error: err.message,
+    });
   }
 }
 
@@ -194,7 +254,10 @@ export async function updateStatusModerasi(req, res) {
     targetPostId = Number(matchNum);
   } else {
     try {
-      const ticketRes = await query('SELECT id_post FROM laporan_polusi WHERE nomor_tiket = $1', [cleanStr]);
+      const ticketRes = await query(
+        'SELECT id_post FROM laporan_polusi WHERE nomor_tiket = $1',
+        [cleanStr]
+      );
       if (ticketRes && ticketRes.rows.length > 0) {
         targetPostId = ticketRes.rows[0].id_post;
       }
@@ -207,6 +270,7 @@ export async function updateStatusModerasi(req, res) {
     if (status === 'DIHAPUS') {
       if (targetPostId) {
         await query('DELETE FROM post_komunitas WHERE id_post = $1', [targetPostId]);
+        removePostFromFeedCache(targetPostId);
       }
     } else if (['AKTIF', 'DISEMBUNYIKAN'].includes(status)) {
       if (targetPostId) {
@@ -214,6 +278,7 @@ export async function updateStatusModerasi(req, res) {
           status,
           targetPostId,
         ]);
+        invalidateFeedCache();
       }
     }
 
@@ -223,12 +288,17 @@ export async function updateStatusModerasi(req, res) {
           status,
           targetPostId,
         ]);
+        invalidateFeedCache();
       }
     }
+    invalidateModerasiCache();
     return res.status(200).json({ message: 'Status moderasi berhasil diperbarui di Supabase' });
   } catch (err) {
     console.error('[Moderasi DB Update Error]:', err.message);
-    return res.status(500).json({ message: 'Gagal memperbarui status moderasi di Supabase.', error: err.message });
+    return res.status(500).json({
+      message: 'Gagal memperbarui status moderasi di Supabase.',
+      error: err.message,
+    });
   }
 }
 
@@ -242,7 +312,10 @@ export async function hapusPostModerasi(req, res) {
     targetPostId = Number(matchNum);
   } else {
     try {
-      const ticketRes = await query('SELECT id_post FROM laporan_polusi WHERE nomor_tiket = $1', [cleanStr]);
+      const ticketRes = await query(
+        'SELECT id_post FROM laporan_polusi WHERE nomor_tiket = $1',
+        [cleanStr]
+      );
       if (ticketRes && ticketRes.rows.length > 0) {
         targetPostId = ticketRes.rows[0].id_post;
       }
@@ -252,27 +325,51 @@ export async function hapusPostModerasi(req, res) {
   try {
     if (targetPostId) {
       await query('DELETE FROM post_komunitas WHERE id_post = $1', [targetPostId]);
+      removePostFromFeedCache(targetPostId);
     }
+    invalidateModerasiCache();
     return res.status(200).json({ message: 'Konten berhasil dihapus permanen dari Supabase.' });
   } catch (err) {
     console.error('[Hapus Post DB Error]:', err.message);
-    return res.status(500).json({ message: 'Gagal menghapus konten dari Supabase.', error: err.message });
+    return res.status(500).json({
+      message: 'Gagal menghapus konten dari Supabase.',
+      error: err.message,
+    });
   }
 }
 
 // UC-15: Bagikan Dan Ubah Konten Edukasi
 export async function getDaftarEdukasiAdmin(_req, res) {
   try {
-    const result = await query('SELECT * FROM konten_edukasi ORDER BY published_at DESC');
+    const result = await query(
+      `SELECT id_konten, judul_konten, kategori_topik, isi_materi, media_url, status_publikasi, id_admin, published_at
+       FROM konten_edukasi
+       ORDER BY published_at DESC
+       LIMIT 30`
+    );
     return res.status(200).json({ list_edukasi: result?.rows || [] });
   } catch (err) {
-    return res.status(500).json({ message: 'Gagal memuat daftar edukasi dari Supabase.', error: err.message });
+    return res.status(500).json({
+      message: 'Gagal memuat daftar edukasi dari Supabase.',
+      error: err.message,
+    });
   }
 }
 
 export async function simpanAtauUbahEdukasiAdmin(req, res) {
-  const { id, id_konten, judul, title, topic, kategori, isi_materi, sections, media_url, cover, status_publikasi = 'PUBLISHED' } =
-    req.body;
+  const {
+    id,
+    id_konten,
+    judul,
+    title,
+    topic,
+    kategori,
+    isi_materi,
+    sections,
+    media_url,
+    cover,
+    status_publikasi = 'PUBLISHED',
+  } = req.body;
 
   const articleTitle = judul || title || '';
   const articleTopic = kategori || topic || 'Kenali udara';
@@ -305,10 +402,17 @@ export async function simpanAtauUbahEdukasiAdmin(req, res) {
         articleId = insRes.rows[0].id_konten;
       }
     }
-    return res.status(200).json({ message: 'Konten edukasi berhasil disimpan ke Supabase', id: articleId });
+    invalidateEdukasiCache();
+    return res.status(200).json({
+      message: 'Konten edukasi berhasil disimpan ke Supabase',
+      id: articleId,
+    });
   } catch (err) {
     console.warn('[Admin Edukasi DB Warning]:', err.message);
-    return res.status(500).json({ message: 'Gagal menyimpan konten edukasi ke Supabase.', error: err.message });
+    return res.status(500).json({
+      message: 'Gagal menyimpan konten edukasi ke Supabase.',
+      error: err.message,
+    });
   }
 }
 
@@ -316,8 +420,12 @@ export async function hapusEdukasiAdmin(req, res) {
   const { id } = req.params;
   try {
     await query('DELETE FROM konten_edukasi WHERE id_konten = $1', [id]);
+    invalidateEdukasiCache();
     return res.status(200).json({ message: 'Artikel edukasi berhasil dihapus dari Supabase' });
   } catch (err) {
-    return res.status(500).json({ message: 'Gagal menghapus artikel edukasi dari Supabase.', error: err.message });
+    return res.status(500).json({
+      message: 'Gagal menghapus artikel edukasi dari Supabase.',
+      error: err.message,
+    });
   }
 }

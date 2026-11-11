@@ -57,79 +57,65 @@ watch(
 
 /**
  * Autentikasi Login (UC-01 SKPL: POST /api/auth/login)
- * Mendukung koneksi langsung ke Backend Express.js + PostgreSQL maupun mode simulasi.
+ * Terhubung 100% ke Backend Express.js + PostgreSQL Supabase (tanpa simulasi lokal).
  */
 export async function loginAccount(email, password) {
-  try {
-    const res = await apiRequest('/auth/login', {
-      method: 'POST',
-      body: JSON.stringify({ email, password }),
-    });
-    if (res && res.token) {
-      const profilData = res.profil || res.user;
-      if (profilData) {
-        Object.assign(userProfileStore, profilData);
-      }
-      setStoredSession(res.token, userProfileStore);
-      return { success: true, role: res.role || userProfileStore.role || 'USER', fromBackend: true };
+  const res = await apiRequest('/auth/login', {
+    method: 'POST',
+    body: JSON.stringify({ email, password }),
+  });
+  if (res && res.token) {
+    const profilData = res.profil || res.user;
+    if (profilData) {
+      Object.assign(userProfileStore, profilData);
     }
-  } catch (err) {
-    if (err.status === 401 || err.status === 403) {
-      throw err;
-    }
+    setStoredSession(res.token, userProfileStore);
+    return {
+      success: true,
+      role: res.role || userProfileStore.role || 'USER',
+      fromBackend: true,
+    };
   }
-  return { success: true, role: userProfileStore.role || 'USER', fromBackend: false };
+  throw new Error('Gagal melakukan autentikasi ke database Supabase.');
 }
 
 /**
  * Registrasi Akun Baru (UC-02 SKPL: POST /api/auth/register)
+ * Terhubung 100% ke Backend Express.js + PostgreSQL Supabase (tanpa simulasi lokal).
  */
 export async function registerAccount({ name, email, password, confirmPassword, lokasi_default }) {
-  try {
-    const res = await apiRequest('/auth/register', {
-      method: 'POST',
-      body: JSON.stringify({
-        nama: name,
-        email,
-        password,
-        konfirmasi: confirmPassword,
-        lokasi_default: lokasi_default || 'Samarinda',
-      }),
-    });
-    if (res && res.token) {
-      const userData = res.user || res.profil;
-      if (userData) {
-        Object.assign(userProfileStore, userData);
-      }
-      setStoredSession(res.token, userProfileStore);
-      return { success: true, fromBackend: true };
+  const res = await apiRequest('/auth/register', {
+    method: 'POST',
+    body: JSON.stringify({
+      nama: name,
+      email,
+      password,
+      konfirmasi: confirmPassword,
+      lokasi_default: lokasi_default || 'Samarinda',
+    }),
+  });
+  if (res && res.token) {
+    const userData = res.user || res.profil;
+    if (userData) {
+      Object.assign(userProfileStore, userData);
     }
-  } catch (err) {
-    if (err.status === 409 || err.status === 400) {
-      throw err;
-    }
+    setStoredSession(res.token, userProfileStore);
+    return { success: true, fromBackend: true };
   }
-
-  if (name) userProfileStore.nama_lengkap = name;
-  if (email) userProfileStore.email = email;
-  if (lokasi_default) userProfileStore.lokasi_default = lokasi_default;
-  saveStoredUser(userProfileStore);
-  return { success: true, fromBackend: false };
+  throw new Error('Gagal mendaftarkan akun ke database Supabase.');
 }
 
 /**
  * Update Profil Pengguna (UC-11 SKPL: PUT /api/profile)
  */
 export async function updateProfileData(payload) {
-  Object.assign(userProfileStore, payload);
-  saveStoredUser(userProfileStore);
   try {
     const res = await apiRequest('/profile', {
       method: 'PUT',
       body: JSON.stringify(payload),
     });
     if (res && res.profil_user) {
-      Object.assign(userProfileStore, res.profil_user);
+      Object.assign(userProfileStore, payload, res.profil_user);
       saveStoredUser(userProfileStore);
     }
     return userProfileStore;
@@ -143,39 +129,20 @@ export async function forgotPasswordAccount({ email, newPassword, confirmPasswor
   const cleanEmail = (email || '').trim().toLowerCase();
   const cleanPassword = (newPassword || '').trim();
 
-  // Validasi demo / offline fallback
-  if (
-    (cleanEmail === 'admin@polusee.id' && cleanPassword === 'admin123') ||
-    (cleanEmail === 'user@polusee.id' && cleanPassword === 'user123')
-  ) {
-    const error = new Error('Kata sandi baru tidak boleh sama dengan kata sandi sebelumnya.');
-    error.status = 400;
-    throw error;
-  }
-
-  try {
-    const res = await apiRequest('/auth/forgot-password', {
-      method: 'POST',
-      body: JSON.stringify({
-        email: cleanEmail,
-        password: cleanPassword,
-        newPassword: cleanPassword,
-        confirmPassword,
-      }),
-    });
-    return {
-      success: true,
-      message: res.message || 'Kata sandi berhasil diperbarui! Silakan masuk dengan kata sandi baru Anda.',
-    };
-  } catch (err) {
-    if (err.status === 400 || err.status === 404) {
-      throw err;
-    }
-    return {
-      success: true,
-      message: 'Kata sandi berhasil diperbarui! Silakan masuk dengan kata sandi baru Anda.',
-    };
-  }
+  const res = await apiRequest('/auth/forgot-password', {
+    method: 'POST',
+    body: JSON.stringify({
+      email: cleanEmail,
+      password: cleanPassword,
+      newPassword: cleanPassword,
+      confirmPassword,
+    }),
+  });
+  return {
+    success: true,
+    message:
+      res.message || 'Kata sandi berhasil diperbarui! Silakan masuk dengan kata sandi baru Anda.',
+  };
 }
 
 export function logoutAccount() {

@@ -121,7 +121,7 @@ function handleAvatarChange(event) {
     img.onload = () => {
       try {
         const canvas = document.createElement('canvas');
-        const MAX_SIZE = 800;
+        const MAX_SIZE = 256;
         let width = img.width;
         let height = img.height;
 
@@ -146,7 +146,7 @@ function handleAvatarChange(event) {
         }
 
         ctx.drawImage(img, 0, 0, width, height);
-        const compressedBase64 = canvas.toDataURL('image/jpeg', 0.85);
+        const compressedBase64 = canvas.toDataURL('image/jpeg', 0.72);
         avatarUrl.value = compressedBase64;
       } catch {
         avatarUrl.value = String(e.target?.result || '');

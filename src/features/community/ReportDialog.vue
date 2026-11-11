@@ -127,7 +127,7 @@ function handleBackdropClick(event) {
   }
 }
 
-function compressImage(file, maxWidth = 1000, quality = 0.72) {
+function compressImage(file, maxWidth = 720, quality = 0.65) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onerror = reject;
@@ -164,7 +164,7 @@ async function handleImageChange(event) {
   error.value = '';
   loading.value = true;
   try {
-    const compressedUri = await compressImage(file, 1000, 0.72);
+    const compressedUri = await compressImage(file, 720, 0.65);
     draft.image = compressedUri;
     draft.photo = compressedUri;
   } catch {

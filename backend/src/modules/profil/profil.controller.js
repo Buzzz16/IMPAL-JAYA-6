@@ -6,6 +6,7 @@
  */
 
 import { query } from '../../config/db.js';
+import { invalidateFeedCache } from '../komunitas/komunitas.controller.js';
 
 export async function getProfil(req, res) {
   const idAkun = req.user?.id_akun;
@@ -135,6 +136,10 @@ export async function updateProfil(req, res) {
         alertProvided,
       ]
     );
+
+    if (namaBaru || fotoProvided) {
+      invalidateFeedCache();
+    }
 
     const checkRes = await query(
       `SELECT a.id_akun, a.nama_lengkap, a.email, a.role,

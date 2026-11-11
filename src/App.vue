@@ -35,7 +35,7 @@ import {
   getHealthRecommendationData,
 } from './services/aqiService';
 import { apiRequest, togglePostLikeApi, saveStoredUser, getStoredToken, getStoredUser } from './services/apiClient';
-import { logoutAccount, userProfileStore } from './features/auth/authStore';
+import { logoutAccount, userProfileStore, updateProfileData } from './features/auth/authStore';
 
 // ============================================================================
 // SISTEM ROUTING URL & PERSISTENSI STATE (HTML5 HISTORY API)
@@ -220,6 +220,8 @@ const healthData = ref(null);
 const lessons = ref([...initialLessons]);
 
 const REPORTS_CACHE_KEY = 'polusee_cached_reports';
+const REPORTS_CACHE_TS_KEY = 'polusee_cached_reports_ts';
+const CLIENT_FEED_TTL_MS = 2 * 60 * 1000; // 2 menit cache sisi client
 
 function getCachedReports() {
   try {
@@ -230,10 +232,20 @@ function getCachedReports() {
   }
 }
 
+function isReportsCacheFresh() {
+  try {
+    const ts = Number(localStorage.getItem(REPORTS_CACHE_TS_KEY) || '0');
+    return ts > 0 && Date.now() - ts < CLIENT_FEED_TTL_MS;
+  } catch {
+    return false;
+  }
+}
+
 function saveCachedReports(items) {
   try {
     if (Array.isArray(items) && items.length > 0) {
       localStorage.setItem(REPORTS_CACHE_KEY, JSON.stringify(items));
+      localStorage.setItem(REPORTS_CACHE_TS_KEY, String(Date.now()));
     }
   } catch {}
 }
@@ -378,6 +390,7 @@ async function initLiveLocationTracking() {
 
         const nearest = findNearestSupportedCity(lat, lon);
         if (nearest) {
+          const prevDefaultCity = userProfileStore.lokasi_default;
           city.value = nearest;
           const nearestSt = findNearestStation(lat, lon, CITY_COORDINATES[nearest]?.stations);
           if (nearestSt) {
@@ -387,8 +400,8 @@ async function initLiveLocationTracking() {
           }
           try { localStorage.setItem('polusee_selected_city', nearest); } catch {}
 
-          // Otomatis update lokasi default user ke Supabase
-          if (userProfileStore.id_akun) {
+          // Hanya update ke Supabase jika lokasi default user benar-benar berubah (hemat Egress)
+          if (userProfileStore.id_akun && prevDefaultCity !== nearest) {
             userProfileStore.lokasi_default = nearest;
             updateProfileData({
               lokasi_default: nearest,
@@ -477,13 +490,54 @@ function onManualCityChange() {
   isLiveTracking.value = false;
 }
 
-// Mengambil data global (Edukasi, Komunitas, Profil) dari Backend
-async function fetchGlobalData() {
+async function fetchCommunityFeed(force = false) {
+  if (!force && reports.value.length > 0 && isReportsCacheFresh()) {
+    loadingFeed.value = false;
+    return;
+  }
   try {
-    const [eduRes, feedRes, profRes] = await Promise.allSettled([
+    const feedRes = await apiRequest('/komunitas/feed');
+    const feedItems = feedRes?.reports || feedRes?.feed_komunitas;
+    if (Array.isArray(feedItems)) {
+      reports.value = feedItems.map((r) => {
+        const img =
+          r.image ||
+          r.photo ||
+          r.url_foto_bukti ||
+          'https://images.unsplash.com/photo-1555066657-4ea53882eaba?auto=format&fit=crop&w=1200&q=85';
+        return {
+          ...r,
+          image: img,
+          photo: img,
+          avatar: r.avatar || r.foto_profil || '',
+        };
+      });
+      saveCachedReports(reports.value);
+    }
+  } catch (err) {
+    console.warn('[PoluSee Frontend] Gagal memuat feed komunitas:', err.message);
+  } finally {
+    loadingFeed.value = false;
+  }
+}
+
+// Mengambil data global (Edukasi, Komunitas bila diperlukan, Profil) dari Backend
+async function fetchGlobalData(forceFeed = false) {
+  try {
+    const needsFeedNow =
+      forceFeed ||
+      page.value === 'community' ||
+      page.value === 'profile' ||
+      admin.value ||
+      reports.value.length === 0 ||
+      !isReportsCacheFresh();
+
+    const hasToken = Boolean(getStoredToken());
+
+    const [eduRes, profRes] = await Promise.allSettled([
       apiRequest('/edukasi'),
-      apiRequest('/komunitas/feed'),
-      apiRequest('/profile'),
+      hasToken ? apiRequest('/profile') : Promise.resolve(null),
+      needsFeedNow ? fetchCommunityFeed(forceFeed) : Promise.resolve(null),
     ]);
 
     if (eduRes.status === 'fulfilled' && eduRes.value?.list_konten?.length > 0) {
@@ -523,29 +577,6 @@ async function fetchGlobalData() {
       });
     }
 
-    if (feedRes.status === 'fulfilled') {
-      const feedItems = feedRes.value?.reports || feedRes.value?.feed_komunitas;
-      if (Array.isArray(feedItems)) {
-        reports.value = feedItems.map((r) => {
-          const img =
-            r.image ||
-            r.photo ||
-            r.url_foto_bukti ||
-            'https://images.unsplash.com/photo-1555066657-4ea53882eaba?auto=format&fit=crop&w=1200&q=85';
-          return {
-            ...r,
-            image: img,
-            photo: img,
-            avatar:
-              r.avatar ||
-              r.foto_profil ||
-              '',
-          };
-        });
-        saveCachedReports(reports.value);
-      }
-    }
-
     if (profRes.status === 'fulfilled' && profRes.value?.profil_user) {
       Object.assign(userProfileStore, profRes.value.profil_user);
       saveStoredUser(userProfileStore);
@@ -556,6 +587,13 @@ async function fetchGlobalData() {
     loadingFeed.value = false;
   }
 }
+
+// Saat membuka halaman komunitas atau profil, pastikan feed dimuat jika cache sudah kedaluwarsa
+watch(page, (newPage) => {
+  if (newPage === 'community' || newPage === 'profile') {
+    fetchCommunityFeed(false);
+  }
+});
 
 // Ketika kota berubah, panggil kembali API backend
 watch(city, async (newCity) => {
@@ -647,7 +685,7 @@ async function handleLoginSuccess(payload = {}) {
     admin.value = true;
     return;
   }
-  await fetchGlobalData();
+  await fetchGlobalData(true);
   const dest = payload.target || redirectTarget.value;
   redirectTarget.value = null;
   if (dest) {

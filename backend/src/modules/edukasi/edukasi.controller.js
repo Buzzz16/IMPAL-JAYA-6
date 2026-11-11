@@ -7,13 +7,30 @@
 
 import { query } from '../../config/db.js';
 
-// UC-06: Ambil daftar konten edukasi
+let cachedEdukasiList = null;
+let cachedEdukasiTime = 0;
+const EDUKASI_CACHE_TTL = 10 * 60 * 1000; // 10 menit TTL
+
+export function invalidateEdukasiCache() {
+  cachedEdukasiList = null;
+  cachedEdukasiTime = 0;
+}
+
+// UC-06: Ambil daftar konten edukasi (dengan In-Memory Cache hemat Egress)
 export async function getDaftarEdukasi(_req, res) {
   try {
+    const now = Date.now();
+    if (cachedEdukasiList && now - cachedEdukasiTime < EDUKASI_CACHE_TTL) {
+      res.locals.dbLog = `Cache hit (${cachedEdukasiList.length} materi edukasi, 0 B egress)`;
+      return res.status(200).json({ list_konten: cachedEdukasiList });
+    }
+
     const result = await query(
-      `SELECT * FROM konten_edukasi
+      `SELECT id_konten, judul_konten, kategori_topik, isi_materi, media_url, status_publikasi, id_admin, published_at
+       FROM konten_edukasi
        WHERE status_publikasi = 'PUBLISHED'
-       ORDER BY published_at DESC`
+       ORDER BY published_at DESC
+       LIMIT 30`
     );
     const rows = (result?.rows || []).map((row, idx) => ({
       ...row,
@@ -30,8 +47,11 @@ export async function getDaftarEdukasi(_req, res) {
       minutes: row.minutes || 4,
       audience: row.audience || 'Semua orang',
     }));
-    const count = rows.length;
-    res.locals.dbLog = `Ditemukan ${count} materi edukasi`;
+
+    cachedEdukasiList = rows;
+    cachedEdukasiTime = Date.now();
+
+    res.locals.dbLog = `Ditemukan ${rows.length} materi edukasi (disimpan ke cache)`;
     return res.status(200).json({ list_konten: rows });
   } catch (err) {
     return res.status(500).json({ message: 'Gagal memuat daftar edukasi dari Supabase.', error: err.message });
@@ -42,20 +62,35 @@ export async function getDaftarEdukasi(_req, res) {
 export async function getDetailEdukasi(req, res) {
   const { id_konten } = req.params;
   try {
-    const kontenRes = await query('SELECT * FROM konten_edukasi WHERE id_konten = $1', [
-      id_konten,
-    ]);
-    if (kontenRes && kontenRes.rows.length > 0) {
+    let detailRow = null;
+    if (Array.isArray(cachedEdukasiList)) {
+      detailRow = cachedEdukasiList.find((item) => String(item.id_konten) === String(id_konten));
+    }
+
+    if (!detailRow) {
+      const kontenRes = await query(
+        `SELECT id_konten, judul_konten, kategori_topik, isi_materi, media_url, status_publikasi, id_admin, published_at
+         FROM konten_edukasi
+         WHERE id_konten = $1`,
+        [id_konten]
+      );
+      if (kontenRes && kontenRes.rows.length > 0) {
+        detailRow = kontenRes.rows[0];
+      }
+    }
+
+    if (detailRow) {
       const ulasanRes = await query(
-        `SELECT u.*, a.nama_lengkap
+        `SELECT u.id_ulasan, u.id_konten, u.id_user, u.isi_ulasan, u.rating, u.is_edited, u.created_at, u.updated_at, a.nama_lengkap
          FROM ulasan_edukasi u
          JOIN akun a ON u.id_user = a.id_akun
          WHERE u.id_konten = $1
-         ORDER BY u.created_at DESC`,
+         ORDER BY u.created_at DESC
+         LIMIT 50`,
         [id_konten]
       );
       return res.status(200).json({
-        detail_konten: kontenRes.rows[0],
+        detail_konten: detailRow,
         ulasan: ulasanRes.rows,
       });
     }

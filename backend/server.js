@@ -114,7 +114,11 @@ app.use((req, res, next) => {
   return res.status(404).send('Frontend build belum ditemukan. Jalankan "npm run build" terlebih dahulu.');
 });
 
-app.listen(PORT, () => {
-  console.log(`[PoluSee Backend] Express.js server berjalan pada http://localhost:${PORT}`);
-  startAqiPeriodicLogger();
-});
+if (!process.env.VERCEL) {
+  app.listen(PORT, () => {
+    console.log(`[PoluSee Backend] Express.js server berjalan pada http://localhost:${PORT}`);
+    startAqiPeriodicLogger();
+  });
+}
+
+export default app;

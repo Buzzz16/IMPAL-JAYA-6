@@ -6,20 +6,18 @@
  */
 
 import { query } from '../../config/db.js';
+import { serverCache, ONE_HOUR_MS } from '../../utils/serverCache.js';
 
-let cachedRekomendasiRules = null;
-let cachedRekomendasiTime = 0;
-const REKOMENDASI_CACHE_TTL = 15 * 60 * 1000; // 15 menit TTL
+const REKOMENDASI_CACHE_KEY = 'rekomendasi:rules';
 
 export function invalidateRekomendasiCache() {
-  cachedRekomendasiRules = null;
-  cachedRekomendasiTime = 0;
+  serverCache.del(REKOMENDASI_CACHE_KEY);
 }
 
 export async function getAllRekomendasiRules() {
-  const now = Date.now();
-  if (cachedRekomendasiRules && now - cachedRekomendasiTime < REKOMENDASI_CACHE_TTL) {
-    return { rows: cachedRekomendasiRules, fromCache: true };
+  const cached = serverCache.get(REKOMENDASI_CACHE_KEY);
+  if (cached) {
+    return { rows: cached, fromCache: true };
   }
   const result = await query(
     `SELECT id_rekomendasi, batas_bawah_aqi, batas_atas_aqi, kategori_aqi,
@@ -30,8 +28,7 @@ export async function getAllRekomendasiRules() {
   );
   const rows = result?.rows || [];
   if (rows.length > 0) {
-    cachedRekomendasiRules = rows;
-    cachedRekomendasiTime = Date.now();
+    serverCache.set(REKOMENDASI_CACHE_KEY, rows, ONE_HOUR_MS);
   }
   return { rows, fromCache: false };
 }

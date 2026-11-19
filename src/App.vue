@@ -221,7 +221,7 @@ const lessons = ref([...initialLessons]);
 
 const REPORTS_CACHE_KEY = 'polusee_cached_reports';
 const REPORTS_CACHE_TS_KEY = 'polusee_cached_reports_ts';
-const CLIENT_FEED_TTL_MS = 2 * 60 * 1000; // 2 menit cache sisi client
+const CLIENT_FEED_TTL_MS = 15 * 1000; // 15 detik cache sisi client (Express tetap melayani dari RAM, 0 B egress Supabase)
 
 function getCachedReports() {
   try {
@@ -366,6 +366,9 @@ async function fetchCityData(cityName = city.value, lat = null, lon = null) {
   }
 }
 
+// Guard anti double-fetch ketika GPS mengupdate city lalu langsung memanggil fetchCityData
+let skipNextCityWatch = false;
+
 // Inisialisasi Live Tracking lokasi perangkat (posisi default map saat dijalankan)
 async function initLiveLocationTracking() {
   if (typeof navigator === 'undefined' || !navigator.geolocation) {
@@ -391,7 +394,10 @@ async function initLiveLocationTracking() {
         const nearest = findNearestSupportedCity(lat, lon);
         if (nearest) {
           const prevDefaultCity = userProfileStore.lokasi_default;
-          city.value = nearest;
+          if (city.value !== nearest) {
+            skipNextCityWatch = true;
+            city.value = nearest;
+          }
           const nearestSt = findNearestStation(lat, lon, CITY_COORDINATES[nearest]?.stations);
           if (nearestSt) {
             point.value = nearestSt.name;
@@ -595,12 +601,16 @@ watch(page, (newPage) => {
   }
 });
 
-// Ketika kota berubah, panggil kembali API backend
+// Ketika kota berubah, panggil kembali API backend (hindari double-fetch saat GPS init)
 watch(city, async (newCity) => {
+  if (skipNextCityWatch) {
+    skipNextCityWatch = false;
+    return;
+  }
   await fetchCityData(newCity);
 });
 
-// Ketika periode riwayat berubah, ambil time-series baru
+// Ketika periode riwayat berubah, ambil time-series baru (1x request saja)
 watch(period, async (newPeriod) => {
   try {
     const h = await getHistoryAqiData(city.value, newPeriod);
@@ -611,13 +621,9 @@ watch(period, async (newPeriod) => {
 });
 
 async function handleHistoryPeriodChange(newP) {
+  if (period.value === newP) return;
+  // Cukup ubah period.value; watch(period) di atas akan mengeksekusi fetch 1x (tanpa double-fetch)
   period.value = newP;
-  try {
-    const h = await getHistoryAqiData(city.value, newP);
-    if (h) historyData.value = h;
-  } catch {
-    // Selesai
-  }
 }
 
 function saveReport(updated) {

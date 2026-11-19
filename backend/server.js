@@ -23,6 +23,7 @@ import komunitasRoutes from './src/modules/komunitas/komunitas.routes.js';
 import profilRoutes from './src/modules/profil/profil.routes.js';
 import adminRoutes from './src/modules/admin/admin.routes.js';
 import { startAqiPeriodicLogger } from './src/services/iqairService.js';
+import { serverCache } from './src/utils/serverCache.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -88,6 +89,7 @@ app.get('/api/health', (_req, res) => {
     status: 'OK',
     platform: 'PoluSee Web Platform (Vue.js + Express.js + PostgreSQL)',
     document_ref: 'SKPL-1000 Revisi C',
+    cache_stats: serverCache.getStats(),
     timestamp: new Date().toISOString(),
   });
 });

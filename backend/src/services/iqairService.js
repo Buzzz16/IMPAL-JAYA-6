@@ -8,6 +8,7 @@
 
 import { BACKEND_EXTERNAL_API } from '../config/externalApi.js';
 import { query } from '../config/db.js';
+import { serverCache, ONE_HOUR_MS, THIRTY_MINUTES_MS } from '../utils/serverCache.js';
 
 // Koordinat referensi kota utama di Indonesia (Berbasis data stasiun nyata IQAir AirVisual API)
 export const KNOWN_CITIES = {
@@ -644,8 +645,8 @@ export async function getLiveIQAirData(city = 'Samarinda', lat = null, lon = nul
         updatedAtFormatted: `${new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })} ${cityInfo.timezone}`,
         apiLatencyMs: 35,
       };
-      // Simpan di cache selama 30 detik agar segera mencoba request API lagi begitu limit berakhir
-      cache.set(cityKey, { timestamp: now - CACHE_TTL_MS + 30000, data: liveResult });
+      // Simpan di cache selama 30 menit agar tidak menembak Supabase berulang saat IQAir rate-limit
+      cache.set(cityKey, { timestamp: now - CACHE_TTL_MS + THIRTY_MINUTES_MS, data: liveResult });
       return liveResult;
     }
   } catch (err) {
@@ -705,6 +706,9 @@ export const LOG_INTERVAL_MS = 4 * 60 * 60 * 1000;
 
 // Mutex in-memory untuk mencegah race condition (pencatatan duplikat dalam milidetik yang sama)
 const activeRecordingLocks = new Set();
+// Cache in-memory waktu terakhir kota dicek/dicatat agar tidak query Supabase berulang
+const lastCheckedLogByCity = new Map();
+const LOG_CHECK_COOLDOWN_MS = 230 * 60 * 1000; // 3 jam 50 menit
 
 /**
  * Mencatat data kualitas udara aktual ke tabel riwayat_aqi_log dengan interval 4 jam
@@ -717,6 +721,12 @@ export async function recordLiveAQILog(liveData) {
     cityName = 'Surabaya';
   }
   const lockKey = cityName.toLowerCase();
+
+  // Hemat Egress: Jika sudah dicek/dicatat dalam 3 jam 50 menit terakhir di memori, skip query DB
+  const lastChecked = lastCheckedLogByCity.get(lockKey) || 0;
+  if (Date.now() - lastChecked < LOG_CHECK_COOLDOWN_MS) {
+    return;
+  }
 
   // Jika kota ini sedang dalam proses pencatatan, batalkan eksekusi duplikat
   if (activeRecordingLocks.has(lockKey)) {
@@ -742,6 +752,7 @@ export async function recordLiveAQILog(liveData) {
     );
 
     if (recentCheck && recentCheck.rows && recentCheck.rows.length > 0) {
+      lastCheckedLogByCity.set(lockKey, Date.now());
       return; // Sudah tercatat dalam siklus 4 jam terakhir, hindari data ganda
     }
 
@@ -752,15 +763,10 @@ export async function recordLiveAQILog(liveData) {
       [cityName, aqiVal, pm25Val, pm10Val, tempVal, humidityVal, kategori]
     );
 
-    // 3. Hapus instan jika terdapat duplikat dalam 4 jam untuk kota yang sama
-    await query(
-      `DELETE FROM riwayat_aqi_log a USING riwayat_aqi_log b
-       WHERE a.id_log > b.id_log
-         AND LOWER(a.lokasi) = LOWER(b.lokasi)
-         AND ABS(EXTRACT(EPOCH FROM (a.waktu_catat - b.waktu_catat))) < 14400`
-    );
+    lastCheckedLogByCity.set(lockKey, Date.now());
+    serverCache.delByPrefix(`history:${lockKey}:`);
 
-    // 4. Auto-delete data riwayat yang usianya lebih lama dari 30 hari
+    // 3. Auto-delete data riwayat yang usianya lebih lama dari 30 hari
     await query(
       `DELETE FROM riwayat_aqi_log WHERE waktu_catat < NOW() - INTERVAL '30 days'`
     );
@@ -823,99 +829,102 @@ export async function getLiveCityStations(city = 'Samarinda') {
 }
 
 /**
- * Menghasilkan riwayat data dinamis berbasis pencatatan database aktual (interval 4 jam)
+ * Menghasilkan riwayat data dinamis berbasis agregasi SQL langsung di Supabase
+ * + Aggressive In-Memory Cache (TTL 1 Jam) agar egress Supabase hanya ratusan byte.
  */
 export async function getLiveHistoryAQI(city = 'Samarinda', period = '24 jam') {
+  const normalizedCity = city.toLowerCase().trim();
+  const historyCacheKey = `history:${normalizedCity}:${period}`;
+  const cachedHistory = serverCache.get(historyCacheKey);
+  if (cachedHistory) {
+    return cachedHistory;
+  }
+
   const liveData = await getLiveIQAirData(city);
   const currentAqi = liveData.aqi;
 
-  let intervalSql = "INTERVAL '24 hours'";
-  if (period === '7 hari') {
-    intervalSql = "INTERVAL '7 days'";
-  } else if (period === '30 hari') {
-    intervalSql = "INTERVAL '30 days'";
-  }
-
-  let dbRows = [];
-  try {
-    const res = await query(
-      `SELECT id_log, lokasi, nilai_aqi, pm25, pm10, suhu, kelembaban, kategori, waktu_catat
-       FROM riwayat_aqi_log
-       WHERE LOWER(lokasi) = LOWER($1)
-         AND waktu_catat >= NOW() - ${intervalSql}
-       ORDER BY waktu_catat ASC`,
-      [city]
-    );
-    if (res && res.rows) {
-      dbRows = res.rows;
-    }
-  } catch (err) {
-    console.warn(`[History DB Warning] Gagal membaca riwayat database untuk ${city}:`, err.message);
-  }
-
   const series = [];
+  let hasDbRows = false;
 
-  if (dbRows.length > 0) {
+  try {
     if (period === '24 jam') {
+      // Hanya ambil 5 kolom yang dipakai dengan LIMIT 24 (maks 24 baris ringan)
+      const res = await query(
+        `SELECT nilai_aqi, pm25, pm10, kategori, waktu_catat
+         FROM riwayat_aqi_log
+         WHERE LOWER(lokasi) = LOWER($1)
+           AND waktu_catat >= NOW() - INTERVAL '24 hours'
+         ORDER BY waktu_catat ASC
+         LIMIT 24`,
+        [city]
+      );
+      const dbRows = res?.rows || [];
+      hasDbRows = dbRows.length > 0;
       dbRows.forEach((row) => {
         const d = new Date(row.waktu_catat);
         const hour = d.getHours();
         const minute = d.getMinutes();
+        const aqiNum = Number(row.nilai_aqi);
+        const pm25Num = row.pm25 != null ? Number(row.pm25) : aqiKePm25(aqiNum);
         series.push({
           waktu_ukur: d.toISOString(),
           label: `${String(hour).padStart(2, '0')}.${String(minute).padStart(2, '0')}`,
-          nilai_aqi: Number(row.nilai_aqi),
-          kategori_level: row.kategori || hitungKategoriAQI(row.nilai_aqi),
-          pm25: row.pm25 != null ? Number(row.pm25) : aqiKePm25(row.nilai_aqi),
-          pm10: row.pm10 != null ? Number(row.pm10) : Number((aqiKePm25(row.nilai_aqi) * 1.34).toFixed(1)),
-        });
-      });
-    } else if (period === '7 hari') {
-      const days = ['Min', 'Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab'];
-      const byDay = {};
-      dbRows.forEach((row) => {
-        const d = new Date(row.waktu_catat);
-        const dayKey = d.toISOString().split('T')[0];
-        if (!byDay[dayKey]) byDay[dayKey] = [];
-        byDay[dayKey].push(row);
-      });
-      Object.keys(byDay).sort().forEach((dayKey) => {
-        const rows = byDay[dayKey];
-        const avgAqi = Math.round(rows.reduce((sum, r) => sum + Number(r.nilai_aqi), 0) / rows.length);
-        const d = new Date(rows[rows.length - 1].waktu_catat);
-        const isToday = new Date().toISOString().split('T')[0] === dayKey;
-        series.push({
-          waktu_ukur: d.toISOString(),
-          label: isToday ? 'Hari ini' : days[d.getDay()],
-          nilai_aqi: avgAqi,
-          kategori_level: hitungKategoriAQI(avgAqi),
-          pm25: aqiKePm25(avgAqi),
-          pm10: Number((aqiKePm25(avgAqi) * 1.34).toFixed(1)),
+          nilai_aqi: aqiNum,
+          kategori_level: row.kategori || hitungKategoriAQI(aqiNum),
+          pm25: pm25Num,
+          pm10: row.pm10 != null ? Number(row.pm10) : Number((pm25Num * 1.34).toFixed(1)),
         });
       });
     } else {
-      // 30 hari: agregasi rata-rata per hari
-      const byDay = {};
-      dbRows.forEach((row) => {
-        const d = new Date(row.waktu_catat);
+      // Tarik angka matang langsung dari PostgreSQL (GROUP BY hari) — maks 7 atau 30 baris!
+      const intervalSql = period === '7 hari' ? "INTERVAL '7 days'" : "INTERVAL '30 days'";
+      const maxRows = period === '7 hari' ? 7 : 30;
+      const res = await query(
+        `SELECT DATE(waktu_catat) AS tanggal,
+                ROUND(AVG(nilai_aqi))::int AS avg_aqi,
+                MIN(nilai_aqi)::int AS min_aqi,
+                MAX(nilai_aqi)::int AS max_aqi,
+                ROUND(AVG(pm25)::numeric, 1) AS avg_pm25,
+                ROUND(AVG(pm10)::numeric, 1) AS avg_pm10,
+                MAX(waktu_catat) AS last_recorded
+         FROM riwayat_aqi_log
+         WHERE LOWER(lokasi) = LOWER($1)
+           AND waktu_catat >= NOW() - ${intervalSql}
+         GROUP BY DATE(waktu_catat)
+         ORDER BY tanggal ASC
+         LIMIT ${maxRows}`,
+        [city]
+      );
+      const aggRows = res?.rows || [];
+      hasDbRows = aggRows.length > 0;
+      const days = ['Min', 'Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab'];
+      const todayKey = new Date().toISOString().split('T')[0];
+
+      aggRows.forEach((row) => {
+        const d = new Date(row.last_recorded || row.tanggal);
         const dayKey = d.toISOString().split('T')[0];
-        if (!byDay[dayKey]) byDay[dayKey] = [];
-        byDay[dayKey].push(row);
-      });
-      Object.keys(byDay).sort().forEach((dayKey) => {
-        const rows = byDay[dayKey];
-        const avgAqi = Math.round(rows.reduce((sum, r) => sum + Number(r.nilai_aqi), 0) / rows.length);
-        const d = new Date(rows[rows.length - 1].waktu_catat);
+        const avgAqi = Number(row.avg_aqi) || currentAqi;
+        const avgPm25 = row.avg_pm25 != null ? Number(row.avg_pm25) : aqiKePm25(avgAqi);
+        const avgPm10 = row.avg_pm10 != null ? Number(row.avg_pm10) : Number((avgPm25 * 1.34).toFixed(1));
         series.push({
           waktu_ukur: d.toISOString(),
-          label: `${d.getDate()}/${d.getMonth() + 1}`,
+          label:
+            period === '7 hari'
+              ? dayKey === todayKey
+                ? 'Hari ini'
+                : days[d.getDay()]
+              : `${d.getDate()}/${d.getMonth() + 1}`,
           nilai_aqi: avgAqi,
+          min_aqi: Number(row.min_aqi) || avgAqi,
+          max_aqi: Number(row.max_aqi) || avgAqi,
           kategori_level: hitungKategoriAQI(avgAqi),
-          pm25: aqiKePm25(avgAqi),
-          pm10: Number((aqiKePm25(avgAqi) * 1.34).toFixed(1)),
+          pm25: avgPm25,
+          pm10: avgPm10,
         });
       });
     }
+  } catch (err) {
+    console.warn(`[History DB Warning] Gagal membaca riwayat database untuk ${city}:`, err.message);
   }
 
   // Jika di database belum ada riwayat (misal baru pertama kali jalan), masukkan titik aktual saat ini
@@ -936,8 +945,8 @@ export async function getLiveHistoryAQI(city = 'Samarinda', period = '24 jam') {
   const max = Math.max(...values);
   const avg = Math.round(values.reduce((a, b) => a + b, 0) / values.length);
 
-  return {
-    source: dbRows.length > 0 ? 'DATABASE_LOG_4_HOURLY' : 'LIVE_CURRENT_ONLY',
+  const historyResult = {
+    source: hasDbRows ? 'DATABASE_LOG_AGGREGATED' : 'LIVE_CURRENT_ONLY',
     city,
     period,
     currentAqi,
@@ -953,6 +962,10 @@ export async function getLiveHistoryAQI(city = 'Samarinda', period = '24 jam') {
           ? 'Kualitas udara fluktuatif bagi kelompok sensitif. Pantau terus angka sebelum beraktivitas berat.'
           : 'Secara umum kualitas udara berada di rentang aman.',
   };
+
+  // Simpan di memori Express.js selama 1 jam penuh (hemat egress Supabase)
+  serverCache.set(historyCacheKey, historyResult, ONE_HOUR_MS);
+  return historyResult;
 }
 
 /**

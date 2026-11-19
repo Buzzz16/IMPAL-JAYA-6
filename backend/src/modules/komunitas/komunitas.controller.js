@@ -64,10 +64,10 @@ function mapSupabaseRowToReport(row, currentUserId = null, currentClientId = nul
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
-// Cache global lintas-pengguna untuk menekan Egress Supabase secara drastis
+// Cache global lintas-pengguna (TTL 1 jam) untuk menekan Egress Supabase ke ratusan KB/hari
 let sharedFeedRowsCache = null;
 let sharedFeedCacheTimestamp = 0;
-const FEED_CACHE_TTL = 5 * 60 * 1000; // 5 menit TTL (diperbarui in-memory saat ada aksi)
+const FEED_CACHE_TTL = 60 * 60 * 1000; // 1 jam TTL (diperbarui in-memory saat ada aksi)
 
 export function invalidateFeedCache() {
   sharedFeedRowsCache = null;
@@ -155,7 +155,7 @@ export async function getFeedKomunitas(req, res) {
        LEFT JOIN users u ON p.id_user = u.id_akun
        WHERE p.status_moderasi = 'AKTIF'
        ORDER BY p.created_at DESC
-       LIMIT 35`
+       LIMIT 25`
     );
 
     const rows = result?.rows || [];

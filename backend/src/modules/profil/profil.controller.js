@@ -7,11 +7,19 @@
 
 import { query } from '../../config/db.js';
 import { invalidateFeedCache } from '../komunitas/komunitas.controller.js';
+import { serverCache, ONE_HOUR_MS } from '../../utils/serverCache.js';
 
 export async function getProfil(req, res) {
   const idAkun = req.user?.id_akun;
   if (!idAkun) {
     return res.status(200).json({ profil_user: null });
+  }
+
+  const profileCacheKey = `profil:${idAkun}`;
+  const cachedProfile = serverCache.get(profileCacheKey);
+  if (cachedProfile) {
+    res.locals.dbLog = 'Profil pengguna dari cache (0 B egress)';
+    return res.status(200).json({ profil_user: cachedProfile });
   }
 
   try {
@@ -27,18 +35,18 @@ export async function getProfil(req, res) {
 
     if (result && result.rows.length > 0) {
       const row = result.rows[0];
-      res.locals.dbLog = 'Data profil pengguna dimuat dari Supabase';
-      return res.status(200).json({
-        profil_user: {
-          ...row,
-          username: row.username || `@${(row.email || 'pengguna').split('@')[0]}`,
-          umur: row.umur != null ? row.umur : 25,
-          peringatan_aqi_100: row.peringatan_aqi_100 ?? false,
-          lokasi_default: row.lokasi_default || 'Samarinda',
-          kategori_rentan: row.kategori_rentan || 'Umum',
-          foto_profil: row.foto_profil || '',
-        },
-      });
+      const formattedProfile = {
+        ...row,
+        username: row.username || `@${(row.email || 'pengguna').split('@')[0]}`,
+        umur: row.umur != null ? row.umur : 25,
+        peringatan_aqi_100: row.peringatan_aqi_100 ?? false,
+        lokasi_default: row.lokasi_default || 'Samarinda',
+        kategori_rentan: row.kategori_rentan || 'Umum',
+        foto_profil: row.foto_profil || '',
+      };
+      serverCache.set(profileCacheKey, formattedProfile, ONE_HOUR_MS);
+      res.locals.dbLog = 'Data profil pengguna dimuat dari Supabase (disimpan ke cache 1 jam)';
+      return res.status(200).json({ profil_user: formattedProfile });
     }
     return res.status(404).json({ message: 'Profil pengguna tidak ditemukan di database.' });
   } catch (err) {
@@ -152,17 +160,19 @@ export async function updateProfil(req, res) {
     );
 
     const updatedRow = checkRes?.rows?.[0] || {};
+    const formattedUpdated = {
+      ...updatedRow,
+      username: updatedRow.username || `@${(updatedRow.email || 'pengguna').split('@')[0]}`,
+      umur: updatedRow.umur != null ? updatedRow.umur : 25,
+      peringatan_aqi_100: updatedRow.peringatan_aqi_100 ?? false,
+      foto_profil: updatedRow.foto_profil || '',
+    };
+    serverCache.set(`profil:${idAkun}`, formattedUpdated, ONE_HOUR_MS);
     res.locals.dbLog = 'Data profil pengguna diperbarui di Supabase';
 
     return res.status(200).json({
       message: 'Profil berhasil diperbarui di Supabase',
-      profil_user: {
-        ...updatedRow,
-        username: updatedRow.username || `@${(updatedRow.email || 'pengguna').split('@')[0]}`,
-        umur: updatedRow.umur != null ? updatedRow.umur : 25,
-        peringatan_aqi_100: updatedRow.peringatan_aqi_100 ?? false,
-        foto_profil: updatedRow.foto_profil || '',
-      },
+      profil_user: formattedUpdated,
     });
   } catch (err) {
     return res.status(500).json({ message: 'Gagal memperbarui profil di Supabase.', error: err.message });

@@ -20,6 +20,7 @@ import {
   getAllRekomendasiRules,
   invalidateRekomendasiCache,
 } from '../rekomendasi/rekomendasi.controller.js';
+import { serverCache, ONE_HOUR_MS } from '../../utils/serverCache.js';
 
 // UC-12: Monitor & Validasi Data AQI (Integrasi API Eksternal IQAir)
 export async function getMonitoringAQI(req, res) {
@@ -175,24 +176,22 @@ export async function updateRekomendasiAdmin(req, res) {
   }
 }
 
-let cachedModerasiReports = null;
-let cachedModerasiTime = 0;
-const MODERASI_CACHE_TTL = 3 * 60 * 1000; // 3 menit TTL
+const ADMIN_MODERASI_KEY = 'admin:moderasi';
+const ADMIN_EDUKASI_KEY = 'admin:edukasi';
 
 function invalidateModerasiCache() {
-  cachedModerasiReports = null;
-  cachedModerasiTime = 0;
+  serverCache.del(ADMIN_MODERASI_KEY);
 }
 
-// UC-14: Moderasi Konten Komunitas (GET) — Hindari SELECT * dan duplikasi payload
+// UC-14: Moderasi Konten Komunitas (GET) — Aggressive 1-Hour Cache
 export async function getAntreanModerasi(_req, res) {
   try {
-    const now = Date.now();
-    if (cachedModerasiReports && now - cachedModerasiTime < MODERASI_CACHE_TTL) {
-      res.locals.dbLog = `Moderasi dari cache (${cachedModerasiReports.length} laporan, 0 B egress)`;
+    const cached = serverCache.get(ADMIN_MODERASI_KEY);
+    if (cached) {
+      res.locals.dbLog = `Moderasi dari cache (${cached.length} laporan, 0 B egress)`;
       return res.status(200).json({
-        daftar_moderasi: cachedModerasiReports,
-        reports: cachedModerasiReports,
+        daftar_moderasi: cached,
+        reports: cached,
       });
     }
 
@@ -205,7 +204,7 @@ export async function getAntreanModerasi(_req, res) {
        LEFT JOIN laporan_polusi l ON p.id_post = l.id_post
        LEFT JOIN akun a ON p.id_user = a.id_akun
        ORDER BY p.created_at DESC
-       LIMIT 35`
+       LIMIT 25`
     );
     const reports = (result?.rows || []).map((r) => ({
       id: `post-${r.id_post}`,
@@ -225,8 +224,7 @@ export async function getAntreanModerasi(_req, res) {
       date: r.created_at,
       time: new Date(r.created_at).toLocaleDateString('id-ID'),
     }));
-    cachedModerasiReports = reports;
-    cachedModerasiTime = Date.now();
+    serverCache.set(ADMIN_MODERASI_KEY, reports, ONE_HOUR_MS);
     return res.status(200).json({ daftar_moderasi: reports, reports });
   } catch (err) {
     return res.status(500).json({
@@ -338,16 +336,23 @@ export async function hapusPostModerasi(req, res) {
   }
 }
 
-// UC-15: Bagikan Dan Ubah Konten Edukasi
+// UC-15: Bagikan Dan Ubah Konten Edukasi (Aggressive 1-Hour Cache)
 export async function getDaftarEdukasiAdmin(_req, res) {
   try {
+    const cached = serverCache.get(ADMIN_EDUKASI_KEY);
+    if (cached) {
+      res.locals.dbLog = `Admin edukasi dari cache (${cached.length} materi, 0 B egress)`;
+      return res.status(200).json({ list_edukasi: cached });
+    }
     const result = await query(
       `SELECT id_konten, judul_konten, kategori_topik, isi_materi, media_url, status_publikasi, id_admin, published_at
        FROM konten_edukasi
        ORDER BY published_at DESC
        LIMIT 30`
     );
-    return res.status(200).json({ list_edukasi: result?.rows || [] });
+    const rows = result?.rows || [];
+    serverCache.set(ADMIN_EDUKASI_KEY, rows, ONE_HOUR_MS);
+    return res.status(200).json({ list_edukasi: rows });
   } catch (err) {
     return res.status(500).json({
       message: 'Gagal memuat daftar edukasi dari Supabase.',
@@ -403,6 +408,7 @@ export async function simpanAtauUbahEdukasiAdmin(req, res) {
       }
     }
     invalidateEdukasiCache();
+    serverCache.del(ADMIN_EDUKASI_KEY);
     return res.status(200).json({
       message: 'Konten edukasi berhasil disimpan ke Supabase',
       id: articleId,
@@ -421,6 +427,7 @@ export async function hapusEdukasiAdmin(req, res) {
   try {
     await query('DELETE FROM konten_edukasi WHERE id_konten = $1', [id]);
     invalidateEdukasiCache();
+    serverCache.del(ADMIN_EDUKASI_KEY);
     return res.status(200).json({ message: 'Artikel edukasi berhasil dihapus dari Supabase' });
   } catch (err) {
     return res.status(500).json({

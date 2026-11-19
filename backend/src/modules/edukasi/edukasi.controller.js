@@ -6,23 +6,21 @@
  */
 
 import { query } from '../../config/db.js';
+import { serverCache, ONE_HOUR_MS, THIRTY_MINUTES_MS } from '../../utils/serverCache.js';
 
-let cachedEdukasiList = null;
-let cachedEdukasiTime = 0;
-const EDUKASI_CACHE_TTL = 10 * 60 * 1000; // 10 menit TTL
+const EDUKASI_LIST_KEY = 'edukasi:list';
 
 export function invalidateEdukasiCache() {
-  cachedEdukasiList = null;
-  cachedEdukasiTime = 0;
+  serverCache.del(EDUKASI_LIST_KEY);
 }
 
-// UC-06: Ambil daftar konten edukasi (dengan In-Memory Cache hemat Egress)
+// UC-06: Ambil daftar konten edukasi (Aggressive 1-Hour Cache hemat Egress)
 export async function getDaftarEdukasi(_req, res) {
   try {
-    const now = Date.now();
-    if (cachedEdukasiList && now - cachedEdukasiTime < EDUKASI_CACHE_TTL) {
-      res.locals.dbLog = `Cache hit (${cachedEdukasiList.length} materi edukasi, 0 B egress)`;
-      return res.status(200).json({ list_konten: cachedEdukasiList });
+    const cached = serverCache.get(EDUKASI_LIST_KEY);
+    if (cached) {
+      res.locals.dbLog = `Cache hit (${cached.length} materi edukasi, 0 B egress)`;
+      return res.status(200).json({ list_konten: cached });
     }
 
     const result = await query(
@@ -48,10 +46,9 @@ export async function getDaftarEdukasi(_req, res) {
       audience: row.audience || 'Semua orang',
     }));
 
-    cachedEdukasiList = rows;
-    cachedEdukasiTime = Date.now();
+    serverCache.set(EDUKASI_LIST_KEY, rows, ONE_HOUR_MS);
 
-    res.locals.dbLog = `Ditemukan ${rows.length} materi edukasi (disimpan ke cache)`;
+    res.locals.dbLog = `Ditemukan ${rows.length} materi edukasi (disimpan ke cache 1 jam)`;
     return res.status(200).json({ list_konten: rows });
   } catch (err) {
     return res.status(500).json({ message: 'Gagal memuat daftar edukasi dari Supabase.', error: err.message });
@@ -62,9 +59,10 @@ export async function getDaftarEdukasi(_req, res) {
 export async function getDetailEdukasi(req, res) {
   const { id_konten } = req.params;
   try {
+    const cachedList = serverCache.get(EDUKASI_LIST_KEY);
     let detailRow = null;
-    if (Array.isArray(cachedEdukasiList)) {
-      detailRow = cachedEdukasiList.find((item) => String(item.id_konten) === String(id_konten));
+    if (Array.isArray(cachedList)) {
+      detailRow = cachedList.find((item) => String(item.id_konten) === String(id_konten));
     }
 
     if (!detailRow) {
@@ -80,18 +78,24 @@ export async function getDetailEdukasi(req, res) {
     }
 
     if (detailRow) {
-      const ulasanRes = await query(
-        `SELECT u.id_ulasan, u.id_konten, u.id_user, u.isi_ulasan, u.rating, u.is_edited, u.created_at, u.updated_at, a.nama_lengkap
-         FROM ulasan_edukasi u
-         JOIN akun a ON u.id_user = a.id_akun
-         WHERE u.id_konten = $1
-         ORDER BY u.created_at DESC
-         LIMIT 50`,
-        [id_konten]
-      );
+      const ulasanKey = `edukasi:ulasan:${id_konten}`;
+      let ulasanRows = serverCache.get(ulasanKey);
+      if (!ulasanRows) {
+        const ulasanRes = await query(
+          `SELECT u.id_ulasan, u.id_konten, u.id_user, u.isi_ulasan, u.rating, u.is_edited, u.created_at, u.updated_at, a.nama_lengkap
+           FROM ulasan_edukasi u
+           JOIN akun a ON u.id_user = a.id_akun
+           WHERE u.id_konten = $1
+           ORDER BY u.created_at DESC
+           LIMIT 50`,
+          [id_konten]
+        );
+        ulasanRows = ulasanRes.rows || [];
+        serverCache.set(ulasanKey, ulasanRows, THIRTY_MINUTES_MS);
+      }
       return res.status(200).json({
         detail_konten: detailRow,
-        ulasan: ulasanRes.rows,
+        ulasan: ulasanRows,
       });
     }
     return res.status(404).json({ message: 'Materi edukasi tidak ditemukan di Supabase.' });
@@ -121,6 +125,7 @@ export async function tambahUlasanEdukasi(req, res) {
       [id_konten, idUser, isi_ulasan.trim(), Number(rating)]
     );
     if (insertRes && insertRes.rows.length > 0) {
+      serverCache.del(`edukasi:ulasan:${id_konten}`);
       return res.status(201).json({ ulasan_baru: insertRes.rows[0] });
     }
     return res.status(400).json({ message: 'Gagal menambahkan ulasan ke database.' });
@@ -151,6 +156,7 @@ export async function editUlasanEdukasi(req, res) {
       [isi_ulasan.trim(), Number(rating), id_ulasan, idUser]
     );
     if (updateRes && updateRes.rows.length > 0) {
+      serverCache.delByPrefix('edukasi:ulasan:');
       return res.status(200).json({ ulasan_updated: updateRes.rows[0] });
     }
     return res.status(404).json({ message: 'Ulasan tidak ditemukan atau Anda tidak berhak mengeditnya.' });

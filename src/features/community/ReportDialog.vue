@@ -392,6 +392,8 @@ const conditionMap = {
       <div class="report-edit-body">
         <img
           v-if="draft.image || draft.photo"
+          width="640"
+          height="280"
           class="report-edit-image"
           :src="draft.image || draft.photo"
           alt="Pratinjau gambar laporan"
@@ -547,6 +549,8 @@ const conditionMap = {
         <div class="report-large-image">
           <img
             v-if="report.image || report.photo"
+            width="640"
+            height="450"
             :src="report.image || report.photo"
             :alt="report.caption"
             @error="$event.target.src = defaultReportPhoto"
@@ -629,7 +633,7 @@ const conditionMap = {
 
 <style scoped>
 .report-dialog {
-  border-radius: 12px;
+  border-radius: 2px;
 }
 
 .comment-input {
@@ -638,7 +642,7 @@ const conditionMap = {
   border: 1px solid #c8cfc0;
   background: #ffffff;
   padding: 8px 12px;
-  border-radius: 6px;
+  border-radius: 2px;
   font-size: var(--text-label);
   outline-offset: 2px;
 }

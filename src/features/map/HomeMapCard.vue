@@ -72,10 +72,18 @@ function selectStation(name) {
 </script>
 
 <template>
-  <section class="map-card map-panel-action" role="region" aria-label="Peta kualitas udara sekitarmu" @click="handleCardClick">
+  <section
+    class="map-card map-panel-action"
+    tabindex="0"
+    role="region"
+    aria-label="Peta kualitas udara sekitarmu"
+    @click="handleCardClick"
+    @keydown.enter.self="emit('open-map-detail')"
+    @keydown.space.self.prevent="emit('open-map-detail')"
+  >
     <div class="section-heading map-card-header">
       <div class="header-titles">
-        <span class="eyebrow">UDARA DI SEKITARMU · OPENSTREETMAP</span>
+        <span class="eyebrow">Peta kualitas udara</span>
         <h2>Satu kota, titik pantau nyata.</h2>
       </div>
       <div class="heading-side">
@@ -162,13 +170,13 @@ function selectStation(name) {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  background: #eff6ff;
-  border: 1px solid #bfdbfe;
-  color: #1d4ed8;
+  background: var(--yellow);
+  border: 1px solid var(--ink);
+  color: var(--ink);
   font-size: 11px;
   font-weight: 700;
   padding: 3px 8px;
-  border-radius: 9999px;
+  border-radius: 2px;
   white-space: nowrap;
 }
 
@@ -178,16 +186,11 @@ function selectStation(name) {
   width: 7px;
   height: 7px;
   border-radius: 50%;
-  background-color: #2563eb;
+  background-color: var(--blue);
 }
 
 .live-gps-ping::after {
-  content: '';
-  position: absolute;
-  inset: -3px;
-  border-radius: 50%;
-  border: 1.5px solid #3b82f6;
-  animation: live-ping-anim 1.5s cubic-bezier(0, 0, 0.2, 1) infinite;
+  display: none;
 }
 
 .map-tooltip {

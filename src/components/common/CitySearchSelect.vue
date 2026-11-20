@@ -787,10 +787,14 @@ onBeforeUnmount(() => {
   font-weight: 650;
   color: #263b3e;
   padding: 0;
-  outline: none;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.city-search-input:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 2px;
 }
 
 .city-search-input::placeholder {

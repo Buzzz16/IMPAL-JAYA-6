@@ -426,7 +426,7 @@ async function handleAdminLogin() {
       <span class="admin-badge">ADMIN WORKSPACE</span>
       <span class="admin-prototype !bg-[#0f4337] !text-[#e0f5ed]">● TERHUBUNG KE BACKEND EXPRESS &amp; IQAIR LIVE</span>
       <button class="text-link" @click="emit('exit')">
-        {{ page === 'login' ? '← Login pengguna' : 'Keluar admin ↗' }}
+        {{ page === 'login' ? '← Login pengguna' : 'Keluar admin' }}
       </button>
     </header>
 
@@ -476,7 +476,7 @@ async function handleAdminLogin() {
           ⚠️ {{ error }}
         </p>
         <button class="primary-button auth-submit cursor-pointer">
-          Masuk ke dashboard <span>→</span>
+          Masuk ke dashboard
         </button>
       </form>
       <div class="article-note">
@@ -867,7 +867,7 @@ async function handleAdminLogin() {
           <button type="button" class="text-link" @click="draft = null">Cancel</button>
           <h2>{{ localLessons.some((item) => item.id === draft.id) ? 'Edit artikel' : 'Artikel baru' }}</h2>
           <button class="primary-button" :disabled="uploading">
-            {{ uploading ? 'Memuat cover…' : 'Terbitkan ke Backend ↗' }}
+            {{ uploading ? 'Memuat cover…' : 'Terbitkan ke Backend' }}
           </button>
         </div>
         <img

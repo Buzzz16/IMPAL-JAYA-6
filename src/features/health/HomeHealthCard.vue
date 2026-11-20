@@ -150,12 +150,17 @@ const recommendations = computed(() => {
   align-items: center;
   gap: 8px;
   cursor: pointer;
-  border-bottom: 1px solid #8d9d8e;
   padding: 4px 0;
+  background-image: linear-gradient(currentColor, currentColor);
+  background-repeat: no-repeat;
+  background-position: 0 100%;
+  background-size: 0 1px;
+  transition: background-size 150ms ease, color 150ms ease;
 }
 
 .personalization:hover {
   color: #ae8a34;
+  background-size: 100% 1px;
 }
 
 /* Responsif Mobile (< 640px) */
@@ -168,7 +173,7 @@ const recommendations = computed(() => {
     font-size: 17px;
   }
 
-  .recommendation-intro {
+ .recommendation-intro {
     margin: 0 16px;
     padding-bottom: 12px;
     font-size: 11px;
@@ -196,6 +201,7 @@ const recommendations = computed(() => {
     margin-top: 3px;
     line-height: 1.45;
   }
+
 
   .personalization-wrap {
     margin: 12px 16px 16px;

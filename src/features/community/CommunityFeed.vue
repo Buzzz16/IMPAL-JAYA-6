@@ -95,7 +95,7 @@ function isReportOwner(entry) {
 </script>
 
 <template>
-  <section class="secondary-panel max-w-none community-section">
+  <section class="secondary-panel community-section !rounded-xl !mx-auto">
     <div class="community-heading">
       <div class="community-title-wrap">
         <span class="eyebrow">FEED KOMUNITAS · {{ (city || 'LOKAL').toUpperCase() }}</span>
@@ -144,7 +144,7 @@ function isReportOwner(entry) {
         <div
           v-for="i in 3"
           :key="i"
-          class="rounded-2xl border border-[var(--line)] bg-[var(--paper)] p-5 animate-pulse"
+          class="border border-[var(--line)] bg-[var(--paper)] p-5 animate-pulse"
         >
           <div class="flex items-center gap-3">
             <div class="h-9 w-9 rounded-full bg-[var(--line)]/60"></div>
@@ -164,7 +164,7 @@ function isReportOwner(entry) {
       <!-- Empty State HANYA jika selesai loading dan belum ada laporan -->
       <div
         v-else-if="displayReports.length === 0"
-        class="rounded-2xl border border-dashed border-[var(--line)] bg-[var(--paper)] p-6 sm:p-8 text-center"
+        class="border border-dashed border-[var(--line)] bg-[var(--paper)] p-6 sm:p-8 text-center"
       >
         <div class="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-[var(--yellow)]/40 text-[#285765]">
           <AppIcon name="pin" :size="24" />
@@ -183,7 +183,7 @@ function isReportOwner(entry) {
             type="button"
             @click="filterMode = 'all'"
           >
-            Lihat semua kota ({{ reports.length }}) →
+            Lihat semua kota ({{ reports.length }})
           </button>
         </div>
       </div>
@@ -192,13 +192,15 @@ function isReportOwner(entry) {
       <article
         v-for="entry in displayReports"
         :key="entry.id"
-        class="feed-article min-w-0 rounded-2xl border border-[var(--line)] bg-[var(--paper)] p-4 sm:p-5 shadow-xs"
+        class="feed-article min-w-0 border border-[#aeb9ae] bg-[var(--paper)] p-4 sm:p-5"
       >
         <!-- Header Penulis & Waktu -->
         <div class="feed-author-header flex items-start sm:items-center gap-3">
           <img
             v-if="entry.avatar || entry.foto_profil"
-            class="h-9 w-9 shrink-0 rounded-full border border-[var(--line)] object-cover shadow-2xs"
+            width="36"
+            height="36"
+            class="h-9 w-9 shrink-0 rounded-full border border-[var(--line)] object-cover"
             :src="entry.avatar || entry.foto_profil"
             :alt="`Avatar ${entry.author || 'User'}`"
             @error="$event.target.style.display = 'none'"
@@ -248,12 +250,14 @@ function isReportOwner(entry) {
         <button
           v-if="entry.image || entry.photo || entry.url_foto_bukti"
           type="button"
-          class="mt-3.5 block w-full overflow-hidden rounded-xl sm:rounded-2xl border border-[var(--line)] bg-[#263b3e] text-left cursor-pointer transition hover:opacity-95"
+          class="mt-3.5 block w-full overflow-hidden border border-[var(--line)] bg-[#263b3e] text-left transition hover:opacity-95"
           :aria-label="`Buka laporan: ${entry.caption}`"
           @click="emit('select-report', entry.id)"
         >
           <img
-            class="max-h-[50vh] sm:max-h-[70vh] w-full object-cover transition duration-300 hover:scale-[1.01]"
+            width="640"
+            height="400"
+            class="max-h-[50vh] sm:max-h-[70vh] w-full object-cover"
             :src="entry.image || entry.photo || entry.url_foto_bukti || fallbackPhoto"
             :alt="entry.caption"
             loading="lazy"
@@ -265,7 +269,7 @@ function isReportOwner(entry) {
         <div class="mt-3.5 flex items-center gap-2.5 text-[var(--blue)]">
           <button
             type="button"
-            class="feed-action-btn flex items-center gap-2 rounded-full bg-[var(--line)]/50 px-3.5 py-1.5 text-xs font-bold transition hover:bg-[var(--yellow)] aria-pressed:text-red-700"
+            class="feed-action-btn flex items-center gap-2 border border-[var(--line)] bg-[#f0f2e8] px-3.5 min-h-[40px] text-xs font-bold transition hover:bg-[var(--yellow)] aria-pressed:text-red-700"
             :aria-label="entry.liked ? 'Batalkan suka pada laporan' : 'Sukai laporan'"
             :aria-pressed="entry.liked"
             @click="

@@ -232,7 +232,7 @@ function handleNext() {
             class="flex items-center gap-1 px-3 py-1.5 rounded border border-[#aeb9ae] bg-white text-[#285765] hover:bg-[#285765] hover:text-white transition cursor-pointer"
             @click="handleNext"
           >
-            Berikutnya →
+            Artikel berikutnya
           </button>
         </div>
 

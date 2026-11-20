@@ -234,10 +234,18 @@ function handleCardClick(event) {
 </script>
 
 <template>
-  <section class="chart-card history-panel" @click="handleCardClick">
+  <section
+    class="chart-card history-panel"
+    tabindex="0"
+    role="button"
+    aria-label="Buka detail riwayat kualitas udara"
+    @click="handleCardClick"
+    @keydown.enter.self="emit('open-history')"
+    @keydown.space.self.prevent="emit('open-history')"
+  >
     <div class="panel-top">
       <div>
-        <span class="eyebrow">RIWAYAT KUALITAS UDARA · LIVE DINAMIS</span>
+        <span class="eyebrow">Riwayat kualitas udara</span>
         <h2>Setiap perubahan berarti.</h2>
       </div>
       <AppIcon name="wind" />
@@ -245,7 +253,7 @@ function handleCardClick(event) {
 
     <div class="chart-toolbar">
       <div class="chart-legend">
-        <i :style="{ backgroundColor: chartTheme.legend }" /> US AQI <span>—</span> <small>Batas aman 50</small>
+        <i :style="{ backgroundColor: chartTheme.legend }" /> US AQI <span aria-hidden="true">·</span> <small>Batas aman 50</small>
       </div>
       <div class="segmented">
         <button
@@ -425,7 +433,7 @@ function handleCardClick(event) {
 .pulse-ring {
   fill: none;
   stroke-width: 1.5;
-  animation: chart-ping 2s cubic-bezier(0, 0, 0.2, 1) infinite;
+  opacity: 0.35;
 }
 @keyframes chart-ping {
   0% {

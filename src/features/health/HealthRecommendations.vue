@@ -280,7 +280,7 @@ const guides = [
         <h2>Kenali kebutuhan kesehatanmu.</h2>
         <p>Atur preferensi kesehatan dan peringatan kualitas udara di Profil.</p>
       </div>
-      <button class="primary-button" @click="emit('profile')">Buka Profil →</button>
+      <button class="primary-button" @click="emit('profile')">Buka Profil</button>
     </section>
     <p class="health-disclaimer">
       Panduan ini bersifat umum dan edukatif, bukan diagnosis atau pengganti saran dokter. Data AQI masih demonstrasi. Jika mengalami sesak berat, nyeri dada, atau gejala memburuk, segera cari pertolongan medis.

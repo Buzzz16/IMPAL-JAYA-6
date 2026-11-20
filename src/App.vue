@@ -790,11 +790,11 @@ onBeforeUnmount(() => {
   />
   <div v-else class="app-shell">
     <aside class="sidebar">
-      <a
+      <button
+        type="button"
         class="brand-mark relative"
-        href="#"
         aria-label="PoluSee beranda"
-        @click.prevent="goHome"
+        @click="goHome"
       >
         <AppIcon name="wind" :size="29" />
         <span
@@ -802,7 +802,7 @@ onBeforeUnmount(() => {
         >
           P
         </span>
-      </a>
+      </button>
       <nav>
         <button
           v-for="item in navItems"
@@ -821,15 +821,16 @@ onBeforeUnmount(() => {
 
     <div class="workspace">
       <header class="topbar">
-        <a class="wordmark" href="#" @click.prevent="goHome">
+        <button type="button" class="wordmark" @click="goHome">
           Polu<span>See</span><span class="brand-dot" />
-        </a>
-        <span class="header-tag">UDARA LEBIH BAIK, HIDUP LEBIH BAIK · LIVE IQAIR</span>
+        </button>
+        <span class="header-tag">Pantau kualitas udara harian di sekitarmu</span>
         <div class="top-actions">
           <div class="notification-wrap">
             <button
+              type="button"
               class="icon-button bell"
-              aria-label="Notifikasi"
+              aria-label="Notifikasi kualitas udara"
               @click="notification = !notification"
             >
               <AppIcon name="bell" /><i />
@@ -844,26 +845,26 @@ onBeforeUnmount(() => {
                     : 'Kualitas udara relatif baik. Nikmati aktivitas luar dengan bijak.'
                 }}
               </p>
-              <small>Data langsung dari IQAir · {{ updatedAt }}</small>
+              <small>Diperbarui pukul {{ updatedAt }}</small>
             </div>
           </div>
-          <div class="flex items-center gap-2 pl-2 border-l border-[#aeb9ae]/50">
+          <div class="flex items-center gap-2.5 pl-3 border-l border-[#aeb9ae]/70">
             <div v-if="userProfileStore.email" class="hidden sm:flex items-center gap-2">
               <div class="h-8 w-8 rounded-full overflow-hidden border border-[#aeb9ae] bg-[#285765] text-[#edce7e] flex items-center justify-center text-xs font-bold shrink-0">
-                <img v-if="userProfileStore.foto_profil" :src="userProfileStore.foto_profil" class="h-full w-full object-cover" :alt="userProfileStore.nama_lengkap || 'Avatar'" />
+                <img v-if="userProfileStore.foto_profil" :src="userProfileStore.foto_profil" width="32" height="32" class="h-full w-full object-cover" :alt="userProfileStore.nama_lengkap || 'Avatar'" />
                 <span v-else>{{ (userProfileStore.nama_lengkap || userProfileStore.email || 'P').slice(0, 1).toUpperCase() }}</span>
               </div>
               <div class="flex flex-col text-right">
-                <span class="text-xs font-semibold text-[#285765] leading-tight">{{ userProfileStore.nama_lengkap || userProfileStore.email }}</span>
-                <span class="text-[10px] text-[#71827a] leading-none">{{ userProfileStore.email }} · <span class="rounded bg-[#edce7e]/60 px-1 font-bold text-[#285765]">{{ userProfileStore.role || 'USER' }}</span></span>
+                <span class="text-xs font-semibold text-[#263b3e] leading-tight">{{ userProfileStore.nama_lengkap || userProfileStore.email }}</span>
+                <span class="text-[11px] text-[#54615b] leading-tight">{{ userProfileStore.email }} · <span class="bg-[#edce7e] px-1.5 py-0.5 text-[10px] font-bold text-[#263b3e]">{{ userProfileStore.role || 'USER' }}</span></span>
               </div>
             </div>
             <div v-else class="hidden sm:flex flex-col text-right">
-              <span class="text-xs font-semibold text-[#285765] leading-tight">Pengunjung</span>
-              <span class="text-[10px] text-[#71827a] leading-none">Belum Masuk</span>
+              <span class="text-xs font-semibold text-[#263b3e] leading-tight">Pengunjung</span>
+              <span class="text-[11px] text-[#54615b] leading-tight">Belum masuk</span>
             </div>
             <button
-              class="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-[#aeb9ae] bg-white text-[#285765] text-xs font-medium hover:border-[#285765] hover:bg-[#285765] hover:text-white transition cursor-pointer shadow-2xs"
+              class="flex items-center gap-1.5 px-3 min-h-[40px] border border-[#aeb9ae] bg-[#fafaf5] text-[#285765] text-xs font-semibold hover:border-[#285765] hover:bg-[#285765] hover:text-[#f8f8f1] transition"
               type="button"
               :aria-label="userProfileStore.email ? 'Ganti Akun atau Keluar' : 'Masuk ke Akun'"
               :title="userProfileStore.email ? 'Ganti Akun / Logout' : 'Masuk / Login'"
@@ -888,9 +889,7 @@ onBeforeUnmount(() => {
         </div>
       </header>
 
-      <main
-        class="[&>.overview-grid>section]:transition-all [&>.detail-grid>section]:transition-all [&_.overview-grid>section]:duration-300 [&_.detail-grid>section]:duration-300 [&_.overview-grid>section]:ease-out [&_.detail-grid>section]:ease-out [&_.overview-grid>section:hover]:-translate-y-1 [&_.detail-grid>section:hover]:-translate-y-1 [&_.overview-grid>section:hover]:shadow-lg [&_.detail-grid>section:hover]:shadow-lg [&_.overview-grid>section:hover]:border-[var(--blue)] [&_.detail-grid>section:hover]:border-[var(--blue)] [&_.overview-grid>section:focus-within]:-translate-y-1 [&_.detail-grid>section:focus-within]:-translate-y-1 motion-reduce:[&_.overview-grid>section]:transform-none motion-reduce:[&_.detail-grid>section]:transform-none motion-reduce:[&_.overview-grid>section]:transition-none motion-reduce:[&_.detail-grid>section]:transition-none"
-      >
+      <main>
         <EducationPage
           v-if="page === 'education'"
           :lessons="lessons"
@@ -1071,9 +1070,7 @@ onBeforeUnmount(() => {
         </template>
 
         <footer>
-          <span class="footer-logo">PoluSee</span>
-          <span>Lebih sadar udara. Lebih peduli sesama.</span>
-          <small>Live Data terintegrasi dengan IQAir AirVisual API &amp; Backend Express REST API.</small>
+          <small>Data kualitas udara diperbarui berkala dari stasiun pemantau kota.</small>
         </footer>
       </main>
     </div>

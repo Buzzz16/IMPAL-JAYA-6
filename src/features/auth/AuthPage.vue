@@ -106,12 +106,12 @@ async function handleSubmit() {
 <template>
   <div class="auth-shell">
     <header class="auth-header flex items-center justify-between">
-      <a href="#" class="wordmark cursor-pointer" @click.prevent="emit('cancel')">
+      <button type="button" class="wordmark" @click="emit('cancel')">
         Polu<span>See</span><span class="brand-dot" />
-      </a>
+      </button>
       <button
         type="button"
-        class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[#aeb9ae] bg-white text-[#285765] text-xs font-semibold hover:border-[#285765] hover:bg-[#285765]/5 transition cursor-pointer"
+        class="flex items-center gap-1.5 px-3 min-h-[40px] border border-[#aeb9ae] bg-[#fafaf5] text-[#285765] text-xs font-semibold hover:border-[#285765] hover:bg-[#285765] hover:text-[#f8f8f1] transition"
         title="Kembali ke Beranda publik"
         @click="emit('cancel')"
       >
@@ -159,32 +159,32 @@ async function handleSubmit() {
         </p>
 
         <!-- Kredensial Default Cepat untuk User & Admin (Hanya tampil di form login) -->
-        <div v-if="isLogin" class="mb-4 rounded-xl border border-[#285765]/25 bg-[#285765]/5 p-3">
-          <div class="flex items-center justify-between text-[11px] font-bold text-[#285765] uppercase tracking-wider mb-2">
-            <span>Kredensial Default Siap Pakai:</span>
-            <span class="rounded bg-[#edce7e] px-2 py-0.5 text-[10px] text-[#285765] font-semibold">Tinggal Klik</span>
+        <div v-if="isLogin" class="mb-4 border border-[#aeb9ae] bg-[#f0f2e8] p-3">
+          <div class="flex items-center justify-between text-[11px] font-bold text-[#285765] tracking-wide mb-2">
+            <span>Akses cepat akun demo</span>
+            <span class="bg-[#edce7e] px-2 py-0.5 text-[10px] text-[#263b3e] font-semibold">Isi otomatis</span>
           </div>
           <div class="space-y-2 text-xs">
             <button
               type="button"
               @click="fillAdminCredentials"
-              class="w-full flex flex-col text-left p-2.5 rounded-lg border border-[#aeb9ae] bg-white hover:border-[#285765] hover:bg-[#285765]/10 transition cursor-pointer shadow-xs"
+              class="w-full flex flex-col text-left p-2.5 border border-[#aeb9ae] bg-[#fafaf5] hover:border-[#285765] hover:bg-[#f0f2e8] transition"
             >
               <div class="flex items-center justify-between font-semibold text-[#285765]">
-                <span>🛡️ Akun Admin</span>
-                <span class="text-[10px] text-[#285765] font-normal underline">Klik isi otomatis</span>
+                <span>Akun Admin</span>
+                <span class="text-[11px] text-[#285765] font-normal underline">Klik isi otomatis</span>
               </div>
-              <div class="mt-1 font-mono text-[11px] text-[#33443d]">admin@polusee.id</div>
-              <div class="text-[11px] text-[#66756f]">Password: <span class="font-mono font-bold text-[#285765]">admin123</span></div>
+              <div class="mt-1 font-mono text-[11px] text-[#263b3e]">admin@polusee.id</div>
+              <div class="text-[11px] text-[#54615b]">Password: <span class="font-mono font-bold text-[#285765]">admin123</span></div>
             </button>
-            <div class="flex items-center justify-between px-1 text-[11px] text-[#556961]">
+            <div class="flex items-center justify-between px-1 text-[11px] text-[#54615b]">
               <span>Ingin masuk sebagai User biasa?</span>
               <button
                 type="button"
                 @click="navigate('register')"
-                class="font-semibold text-[#285765] underline cursor-pointer hover:text-[#1d3f4a]"
+                class="font-semibold text-[#285765] underline hover:text-[#1d3f4a]"
               >
-                Daftar Akun Baru →
+                Daftar Akun Baru
               </button>
             </div>
           </div>
@@ -269,21 +269,20 @@ async function handleSubmit() {
             />
           </label>
 
-          <p v-if="error" class="auth-message !bg-[#faebeb] !text-[#b53434] !border !border-[#f0b2b2] !p-2.5 !rounded-lg" role="alert">
-            ⚠️ {{ error }}
+          <p v-if="error" class="auth-message !bg-[#faebeb] !text-[#9b1c1c] !border !border-[#e3a0a0] !p-2.5" role="alert">
+            {{ error }}
           </p>
-          <p v-if="notice" class="auth-message !bg-[#eef8f2] !text-[#23704b] !border !border-[#a8dfc1] !p-2.5 !rounded-lg" role="status">
-            ✓ {{ notice }}
+          <p v-if="notice" class="auth-message !bg-[#eef8f2] !text-[#1f5e3d] !border !border-[#9ad4b5] !p-2.5" role="status">
+            {{ notice }}
           </p>
 
-          <button type="submit" class="primary-button auth-submit cursor-pointer" :disabled="loading">
+          <button type="submit" class="primary-button auth-submit justify-center" :disabled="loading">
             <span v-if="loading">Memproses...</span>
             <span v-else>
               <template v-if="isForgot">Simpan Kata Sandi Baru</template>
               <template v-else-if="isRegister">Daftar Sekarang</template>
               <template v-else>Masuk ke PoluSee</template>
             </span>
-            <span v-if="!loading" aria-hidden="true">→</span>
           </button>
         </form>
 

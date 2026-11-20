@@ -335,7 +335,7 @@ const statsList = computed(() => {
 
       <div class="history-chart-legend">
         <span><i />US AQI (Garis Tren)</span>
-        <span>— Batas kategori baik (AQI 50)</span>
+        <span>Batas kategori baik (AQI 50)</span>
         <span v-if="isLoading" style="color: var(--blue); font-weight: 500;">
           ● Memperbarui data API...
         </span>

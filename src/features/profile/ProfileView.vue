@@ -215,6 +215,8 @@ async function handleSavePreferences() {
         <div class="mx-auto flex aspect-square w-28 sm:w-32 items-center justify-center rounded-full border-4 border-[#f8f8f1] bg-[#285765] text-white shadow-[0_0_0_1px_#9ba99d] overflow-hidden">
           <img
             v-if="userProfileStore.foto_profil"
+            width="128"
+            height="128"
             class="h-full w-full object-cover"
             :src="userProfileStore.foto_profil"
             :alt="`Foto profil ${userProfileStore.nama_lengkap}`"
@@ -263,21 +265,18 @@ async function handleSavePreferences() {
       <!-- Bagian Laporan Saya (Grid 3 Kolom) -->
       <div class="p-4 sm:p-7">
         <div class="mb-4 flex items-center justify-between">
-          <div>
-            <span class="eyebrow">LAPORAN SAYA</span>
-            <h2 class="!my-2 !text-[19px]">Jejak kepedulianmu.</h2>
-          </div>
-          <span class="text-[length:var(--text-caption)] text-[#7d8580]">
+          <h2 class="!m-0 !text-[19px] !font-['DM_Sans'] text-[#7d8580]">LAPORAN SAYA</h2>
+          <span class="text-[length:var(--text-caption)] text-[var(--muted)]">
             {{ myReports.length }} unggahan
           </span>
         </div>
 
-        <div v-if="myReports.length === 0" class="rounded-xl border border-dashed border-[#aeb9ae] bg-[#fafbf4] p-8 text-center">
+        <div v-if="myReports.length === 0" class="border border-dashed border-[#aeb9ae] bg-[#fafbf4] p-8 text-center">
           <div class="mx-auto mb-2 flex h-10 w-10 items-center justify-center rounded-full bg-[#285765]/10 text-[#285765]">
             <AppIcon name="wind" :size="20" />
           </div>
           <p class="font-semibold text-[#285765]">Belum ada laporan</p>
-          <p class="mt-1 text-xs text-[#7d8580]">Kamu belum mengunggah laporan kualitas udara.</p>
+          <p class="mt-1 text-xs text-[var(--muted)]">Kamu belum mengunggah laporan kualitas udara.</p>
         </div>
 
         <div v-else class="grid grid-cols-3 gap-1.5 sm:gap-3">
@@ -291,6 +290,8 @@ async function handleSavePreferences() {
           >
             <!-- Foto Laporan -->
             <img
+              width="320"
+              height="320"
               class="h-full w-full object-cover saturate-85 transition duration-300 group-hover:scale-105 group-hover:brightness-50"
               :src="entry.image || entry.photo || entry.url_foto_bukti || defaultReportPhoto"
               :alt="entry.caption || 'Foto laporan'"
@@ -338,6 +339,8 @@ async function handleSavePreferences() {
         <div class="h-16 w-16 shrink-0 rounded-full border border-[#aeb9ae] overflow-hidden flex items-center justify-center bg-[#285765] text-white">
           <img
             v-if="avatarUrl"
+            width="64"
+            height="64"
             class="h-full w-full object-cover"
             :src="avatarUrl"
             alt="Foto profil baru"

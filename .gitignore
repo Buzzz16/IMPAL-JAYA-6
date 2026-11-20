@@ -13,3 +13,4 @@ logs/
 backend/node_modules/
 backend/uploads/*
 !backend/uploads/.gitkeep
+/anti-slop

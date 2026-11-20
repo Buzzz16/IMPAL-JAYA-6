@@ -429,7 +429,7 @@ onBeforeUnmount(() => {
   height: 8px;
   border-radius: 50%;
   background: #10b981;
-  animation: osm-dot-pulse 1.4s ease-in-out infinite;
+  opacity: 0.85;
 }
 
 @keyframes osm-dot-pulse {
@@ -556,7 +556,7 @@ onBeforeUnmount(() => {
   height: 32px;
   border-radius: 50%;
   background: rgba(37, 99, 235, 0.38);
-  animation: user-loc-pulse 2s cubic-bezier(0.25, 1, 0.5, 1) infinite;
+  opacity: 0.3;
   z-index: 1;
 }
 

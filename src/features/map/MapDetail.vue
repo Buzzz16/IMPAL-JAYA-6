@@ -745,7 +745,7 @@ function handleChartMouseLeave() {
         </div>
 
         <button class="primary-button station-detail-button" @click="emit('detail')">
-          Lihat detail kota &amp; prakiraan →
+          Lihat detail kota &amp; prakiraan
         </button>
 
         <small class="station-disclaimer">
@@ -930,7 +930,7 @@ function handleChartMouseLeave() {
   height: 8px;
   border-radius: 50%;
   background-color: #10b981;
-  animation: mapDotPulse 1.4s ease-in-out infinite;
+  opacity: 0.85;
 }
 
 @keyframes mapDotPulse {
@@ -1001,7 +1001,7 @@ function handleChartMouseLeave() {
 }
 
 .chart-dot-pulse {
-  animation: pingDot 1.6s cubic-bezier(0, 0, 0.2, 1) infinite;
+  opacity: 0.35;
 }
 
 @keyframes pingDot {

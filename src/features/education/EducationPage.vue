@@ -174,7 +174,7 @@ async function saveEditReview(rev) {
 
     <article v-if="selected" class="education-reading secondary-panel">
       <span class="eyebrow">{{ selected.topic.toUpperCase() }} / {{ selected.minutes }} MENIT BACA</span>
-      <img v-if="selected.cover" class="admin-form-cover" :src="selected.cover" :alt="selected.title" />
+      <img v-if="selected.cover" width="800" height="360" class="admin-form-cover" :src="selected.cover" :alt="selected.title" />
       <h1 ref="readingTitle" tabindex="-1">{{ selected.title }}</h1>
       <p>{{ selected.summary }}</p>
 
@@ -197,7 +197,7 @@ async function saveEditReview(rev) {
           target="_blank"
           rel="noreferrer"
         >
-          WHO — Air pollution ↗
+          WHO: Air pollution
         </a>
         ·
         <a
@@ -206,7 +206,7 @@ async function saveEditReview(rev) {
           target="_blank"
           rel="noreferrer"
         >
-          AirNow — AQI basics ↗
+          AirNow: AQI basics
         </a>
       </p>
 
@@ -366,7 +366,7 @@ async function saveEditReview(rev) {
           class="article-card education-lesson"
           @click="openLesson(item)"
         >
-          <img v-if="item.cover" class="admin-report-cover" :src="item.cover" alt="" />
+          <img v-if="item.cover" width="400" height="180" class="admin-report-cover" :src="item.cover" alt="" />
           <div class="education-lesson-top">
             <span class="eyebrow">{{ item.topic.toUpperCase() }}</span>
             <span aria-hidden="true">↗</span>

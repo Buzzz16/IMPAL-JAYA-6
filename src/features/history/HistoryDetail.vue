@@ -49,7 +49,7 @@ function formatTimestamp(isoStr, periodMode) {
     if (isNaN(d.getTime())) return '';
     if (periodMode === '24 jam') {
       const datePart = d.toLocaleDateString('id-ID', { day: 'numeric', month: 'short' });
-      const timePart = d.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }).replace(':', '.');
+      const timePart = d.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', hour12: false }).replace(':', '.');
       return `${datePart}, ${timePart}`;
     }
     if (periodMode === '7 hari') {
